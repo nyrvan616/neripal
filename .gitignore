@@ -1,0 +1,72 @@
+# CMake / desktop builds
+/build/
+/out/
+/cmake-build-*/
+CMakeUserPresets.json
+/CMakeCache.txt
+/CMakeFiles/
+/CTestTestfile.cmake
+/Testing/
+/cmake_install.cmake
+/compile_commands.json
+/install_manifest.txt
+/.ninja_*
+/build.ninja
+/_deps/
+*.exe
+*.dll
+*.lib
+*.a
+*.so
+*.dylib
+*.obj
+*.o
+*.pdb
+*.ilk
+
+# PlatformIO
+/.pio/
+/.cache/
+/.pioenvs/
+/.piolibdeps/
+
+# Test and coverage output
+/coverage/
+*.gcda
+*.gcno
+*.gcov
+lcov.info
+
+# Editors and OS
+/.vs/
+/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/settings.json
+.idea/
+*.user
+*.suo
+*.code-workspace
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+secrets.ini
+/include/secrets.h
+/include/credentials.h
+/src/secrets.h
+/src/credentials.h
+*.key
+*.pem
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+*.orig
+*.swp
+*.swo
+*~
