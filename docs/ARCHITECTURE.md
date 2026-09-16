@@ -16,8 +16,9 @@ Simulator / WaveshareS3Platform
 ```
 
 - `core`: `Pet`, `PetState`, reglas y constantes de balance. Solo C++17 estándar.
-- `ui`: compone la vista lógica 240x240 mediante `IRenderer`; recibe un `PetState`
-  inmutable y no cambia el juego.
+- `ui`: compone las pantallas lógicas 240x240 mediante `IRenderer`; recibe un
+  `PetState` inmutable y no cambia el juego. `UiController` conserva navegación y
+  animación transitorias de presentación.
 - `platform`: contratos pequeños (`IClock`, `IInput`, `IRenderer`) e implementaciones
   Win32 y ESP32-S3.
 - `simulator`: ensambla Core, UI y desktop; contiene herramientas exclusivamente de
@@ -45,9 +46,10 @@ reloj civil a una delta validada antes de restaurar el Core.
 
 ## Simulator frente a Debug Tools
 
-El simulador es una plataforma ejecutable: crea ventana, recoge teclado, avanza el
-reloj y presenta frames. `DebugController` es una herramienta de desarrollo que
-ofrece velocidad, cambio de stats, acciones y reset. No se compila en PlatformIO.
+El simulador es una plataforma ejecutable: crea una superficie de dispositivo,
+recoge teclado, avanza el reloj y presenta frames. `DebugController` es una
+herramienta de desarrollo que ofrece velocidad, cambio de stats, acciones y reset;
+su panel se dibuja fuera del viewport 240x240 y no se compila en PlatformIO.
 
 El controlador no requiere `setHungerForDebug()` en `Pet`. Copia el snapshot,
 cambia el valor y usa `Pet::restore()`, que es una frontera legítima para la futura
@@ -56,16 +58,19 @@ persistencia y además normaliza invariantes.
 ## Presentación
 
 `PetView` usa solo rectángulos y texto, con una mascota placeholder original. Las
-coordenadas siempre están en 240x240. Win32 escala esas coordenadas por un entero y
-la futura implementación ST7789 podrá consumir las mismas llamadas. No se agregó
-LVGL: para esta primera pantalla aumentaría dependencias y dividiría el flujo de
-render entre host y dispositivo sin aportar todavía widgets necesarios.
+coordenadas siempre están en 240x240. Home, menú y Status reciben un `UiState` con
+pantalla, selección y fase de animación; no reciben controles de debug. Win32 escala
+esas coordenadas por un entero y la futura implementación ST7789 podrá consumir las
+mismas llamadas. No se agregó LVGL: para esta interfaz aumentaría dependencias y
+dividiría el flujo de render entre host y dispositivo sin aportar widgets necesarios.
 
 ## Tests
 
-`neripal_core_tests` es un binario C++ sin framework externo. Comprueba acciones,
-límites y degradación temporal con `FakeClock`. CTest solo descubre/ejecuta el
-binario; el propio test no depende de CMake, SDL, Arduino ni hardware.
+`neripal_core_tests` y `neripal_ui_tests` son binarios C++ sin framework externo.
+El primero comprueba acciones, límites y degradación temporal con `FakeClock`; el
+segundo usa un renderer falso para comprobar navegación, animación y límites del
+viewport. CTest solo descubre/ejecuta los binarios; ninguno depende de SDL, Arduino
+ni hardware.
 
 Los próximos módulos con azar deberán recibir una interfaz de fuente aleatoria,
 del mismo modo que el tiempo recibe `IClock`, antes de probar evolución, combate o

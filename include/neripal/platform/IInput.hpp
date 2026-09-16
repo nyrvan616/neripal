@@ -5,11 +5,9 @@
 namespace neripal::platform {
 
 enum class InputAction {
-    Feed,
-    Train,
-    Sleep,
-    Wake,
-    Reset,
+    Next,
+    Confirm,
+    Back,
 };
 
 class IInput {

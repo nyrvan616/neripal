@@ -52,6 +52,10 @@ void Pet::applyNeedsStep() {
 }
 
 void Pet::updateEvolution() {
+    if (state_.stage == EvolutionStage::Egg) {
+        if (state_.ageMillis < evolution::kEggHatchAgeMs) return;
+        state_.stage = EvolutionStage::Baby;
+    }
     if (state_.ageMillis >= evolution::kAdultAgeMs) {
         state_.stage = EvolutionStage::Adult;
     } else if (state_.ageMillis >= evolution::kChildAgeMs) {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeriPal VERSION 0.1.0 LANGUAGES CXX)
+project(NeriPal VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,7 +8,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(neripal_core STATIC src/core/Pet.cpp)
 target_include_directories(neripal_core PUBLIC include)
 
-add_library(neripal_ui STATIC src/ui/PetView.cpp)
+add_library(neripal_ui STATIC
+    src/ui/PetView.cpp
+    src/ui/UiController.cpp
+)
 target_include_directories(neripal_ui PUBLIC include)
 target_link_libraries(neripal_ui PUBLIC neripal_core)
 
@@ -45,4 +48,12 @@ if(BUILD_TESTING)
         target_link_options(neripal_core_tests PRIVATE -static -static-libgcc -static-libstdc++)
     endif()
     add_test(NAME core.unit COMMAND neripal_core_tests)
+
+    add_executable(neripal_ui_tests tests/unit/ui/UiTests.cpp)
+    target_include_directories(neripal_ui_tests PRIVATE include)
+    target_link_libraries(neripal_ui_tests PRIVATE neripal_ui)
+    if(NOT MSVC)
+        target_link_options(neripal_ui_tests PRIVATE -static -static-libgcc -static-libstdc++)
+    endif()
+    add_test(NAME ui.unit COMMAND neripal_ui_tests)
 endif()

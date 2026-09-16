@@ -22,6 +22,7 @@ public:
     void sleep() { pet_.sleep(); }
     void wake() { pet_.wake(); }
     void reset() { pet_.reset(); }
+    void forceEvolution();
 
 private:
     void restore(core::PetState state);

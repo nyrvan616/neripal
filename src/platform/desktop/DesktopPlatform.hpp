@@ -24,6 +24,7 @@ public:
     void waitForNextFrame() const;
     std::optional<int> pollKey();
     std::optional<platform::InputAction> pollAction() override;
+    void setDebugLines(std::vector<std::string> lines);
 
     void beginFrame(platform::Color color) override;
     void fillRect(int x, int y, int width, int height, platform::Color color) override;
@@ -47,6 +48,7 @@ private:
     static LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     LRESULT handleMessage(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     void paint(HDC dc, const RECT& client);
+    void paintDebugPanel(HDC dc, const RECT& bounds);
     static COLORREF toColorRef(platform::Color color);
 
     HWND window_ = nullptr;
@@ -54,6 +56,8 @@ private:
     platform::Color background_ = 0;
     std::vector<DrawCommand> commands_;
     std::deque<int> keys_;
+    std::deque<platform::InputAction> actions_;
+    std::vector<std::string> debugLines_;
 };
 
 }  // namespace neripal::desktop
