@@ -79,6 +79,16 @@ bool evolutionUsesControlledAge() {
     pet.update();
     return pet.state().stage == neripal::core::EvolutionStage::Adult;
 }
+bool eggHatchesWithControlledAge() {
+    FakeClock clock; Pet pet(clock); auto state = pet.state();
+    state.stage = neripal::core::EvolutionStage::Egg;
+    state.ageMillis = 0;
+    pet.restore(state);
+    if (pet.state().stage != neripal::core::EvolutionStage::Egg) return false;
+    clock.advance(neripal::core::evolution::kEggHatchAgeMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Baby;
+}
 }
 
 int main() {
@@ -95,6 +105,7 @@ int main() {
         {"controlled time needs no real wait", noRealWaitIsNeeded},
         {"restored state is normalized", restoreNormalizesEveryStat},
         {"evolution uses controlled age", evolutionUsesControlledAge},
+        {"egg hatches with controlled age", eggHatchesWithControlledAge},
     };
 
     int failures = 0;

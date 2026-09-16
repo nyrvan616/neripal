@@ -37,9 +37,9 @@ std::optional<platform::InputAction> WaveshareS3Platform::pollAction() {
     const bool button2 = digitalRead(pins::kButton2) == LOW;
     const bool button3 = digitalRead(pins::kButton3) == LOW;
     std::optional<platform::InputAction> action;
-    if (button1 && !lastButton1_) action = platform::InputAction::Feed;
-    else if (button2 && !lastButton2_) action = platform::InputAction::Train;
-    else if (button3 && !lastButton3_) action = platform::InputAction::Sleep;
+    if (button1 && !lastButton1_) action = platform::InputAction::Next;
+    else if (button2 && !lastButton2_) action = platform::InputAction::Confirm;
+    else if (button3 && !lastButton3_) action = platform::InputAction::Back;
     lastButton1_ = button1;
     lastButton2_ = button2;
     lastButton3_ = button3;

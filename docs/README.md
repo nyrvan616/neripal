@@ -1,7 +1,8 @@
 # Documentación de NeriPal
 
 Este directorio reúne las decisiones técnicas y el estado verificable de la
-versión 0.1.0.
+versión 0.2.0. El informe `STATUS_REPORT.md` conserva el diagnóstico histórico de
+cierre de la 0.1.
 
 | Documento | Audiencia | Contenido |
 |---|---|---|

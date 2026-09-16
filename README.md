@@ -1,8 +1,8 @@
-# NeriPal 0.1.0
+# NeriPal 0.2.0
 
-Base arquitectónica de una mascota virtual para Windows y la placa
-Waveshare ESP32-S3-Touch-LCD-1.54. El proyecto comparte un Game Core C++17 entre
-el simulador y el firmware, con presentación 240x240, tiempo inyectable y tests
+Mascota virtual retro-moderna para Windows y la placa Waveshare
+ESP32-S3-Touch-LCD-1.54. El proyecto comparte un Game Core C++17 entre el
+simulador y el firmware, con presentación 240x240, tiempo inyectable y tests
 deterministas.
 
 NeriPal está preparado como un repositorio independiente. No necesita el
@@ -16,7 +16,8 @@ directorio que lo contiene ni repositorios hermanos. En esta documentación,
 |---|---|---|
 | Game Core | Operativo | Stats, feed, train, sleep/wake, edad, degradación y evolución simple |
 | Simulador Windows | Operativo | Ventana 240x240 escalada, teclado y Debug Tools |
-| Tests de Core | Operativo | 12/12 tests deterministas, sin hardware ni esperas reales |
+| UI V-Pet | Operativa | Home, menú y Status con primer pase visual color inspirado en estética retro de GBA |
+| Tests | Operativos | 18/18 tests deterministas: 13 Core y 5 UI |
 | Build ESP32-S3 | Operativo | Firmware compilado para 16 MB flash y PSRAM octal |
 | HAL Waveshare | Base parcial | Reloj, power-hold, backlight y tres botones |
 | Display/touch/audio/IMU | Pendiente | Pinout y estrategia documentados; drivers aún no integrados |
@@ -37,8 +38,12 @@ El contraste completo contra el brief está en
 - Reloj desktop acelerable x1, x10, x100 y x1000.
 - Avance manual de una hora simulada.
 - Edición de stats desde Debug Tools, sin setters de debug dentro del Core.
+- Home, menú principal y pantalla Status en el mismo viewport lógico 240x240.
+- Navegación de tres botones: siguiente, confirmar y volver.
+- Idle de mascota y selector de menú temporizados, sin bloqueos.
+- Panel de debug separado visualmente del dispositivo en el simulador.
 - Vista placeholder original creada con primitivas del renderer.
-- Firmware mínimo con botones físicos para feed, train y alternar sleep/wake.
+- Firmware mínimo con tres botones orientados a navegación V-Pet.
 - Versión visible en la cabecera del juego, consola desktop y Serial del ESP32.
 
 ## No incluido todavía
@@ -49,7 +54,7 @@ El contraste completo contra el brief está en
 - Wi-Fi gameplay, ESP-NOW, combate, multiplayer, tienda o inventario.
 - Evolución ramificada, minijuegos o aleatoriedad abstraída.
 - Assets visuales finales y pipeline de sprites.
-- CI, tests de UI/HAL y validación sobre hardware físico.
+- CI, tests contractuales de HAL y validación sobre hardware físico.
 
 ## Requisitos en Windows
 
@@ -111,17 +116,24 @@ firmware y solución de problemas están reunidos en
 
 | Tecla | Acción |
 |---|---|
-| `F` | Alimentar |
-| `T` | Entrenar |
-| `S` | Alternar dormir/despertar |
-| `W` | Despertar |
+| `Z` / `Right` | Siguiente opción del dispositivo |
+| `X` / `Enter` | Confirmar |
+| `C` / `Backspace` | Volver |
+| `Esc` | Salir |
+
+El panel lateral de debug conserva estas herramientas de desarrollo:
+
+| Tecla | Acción de debug |
+|---|---|
+| `F`, `T` | Alimentar, entrenar |
+| `S`, `W` | Dormir/despertar |
 | `R` | Reset |
 | `1`, `2`, `3`, `4` | Tiempo x1, x10, x100, x1000 |
 | `A` | Avanzar una hora simulada |
+| `E` | Forzar la siguiente evolución visual |
 | `Tab` | Seleccionar stat |
 | `Up` / `Down` | Cambiar stat seleccionado ±5 |
 | `Home` / `End` | Llevar stat a 100/0 |
-| `Esc` | Salir |
 
 Más detalles en [`simulator/README.md`](simulator/README.md).
 

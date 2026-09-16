@@ -9,6 +9,20 @@ namespace neripal::desktop {
 namespace {
 constexpr wchar_t kWindowClass[] = L"NeriPalSimulatorWindow";
 constexpr int kWindowScale = 3;
+constexpr int kDebugPanelWidth = 300;
+
+std::optional<platform::InputAction> actionForKey(int key) {
+    switch (key) {
+        case VK_RIGHT:
+        case 'Z': return platform::InputAction::Next;
+        case VK_RETURN:
+        case VK_SPACE:
+        case 'X': return platform::InputAction::Confirm;
+        case VK_BACK:
+        case 'C': return platform::InputAction::Back;
+        default: return std::nullopt;
+    }
+}
 }
 
 DesktopPlatform::DesktopPlatform(HINSTANCE instance) {
@@ -20,7 +34,7 @@ DesktopPlatform::DesktopPlatform(HINSTANCE instance) {
     wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     RegisterClassW(&wc);
 
-    RECT requested{0, 0, IRenderer::kLogicalWidth * kWindowScale,
+    RECT requested{0, 0, IRenderer::kLogicalWidth * kWindowScale + kDebugPanelWidth,
                          IRenderer::kLogicalHeight * kWindowScale};
     AdjustWindowRect(&requested, WS_OVERLAPPEDWINDOW, FALSE);
     window_ = CreateWindowExW(0, kWindowClass, L"NeriPal - Desktop Simulator",
@@ -66,16 +80,14 @@ std::optional<int> DesktopPlatform::pollKey() {
 }
 
 std::optional<platform::InputAction> DesktopPlatform::pollAction() {
-    const auto key = pollKey();
-    if (!key) return std::nullopt;
-    switch (*key) {
-        case 'F': return platform::InputAction::Feed;
-        case 'T': return platform::InputAction::Train;
-        case 'S': return platform::InputAction::Sleep;
-        case 'W': return platform::InputAction::Wake;
-        case 'R': return platform::InputAction::Reset;
-        default: return std::nullopt;
-    }
+    if (actions_.empty()) return std::nullopt;
+    const auto action = actions_.front();
+    actions_.pop_front();
+    return action;
+}
+
+void DesktopPlatform::setDebugLines(std::vector<std::string> lines) {
+    debugLines_ = std::move(lines);
 }
 
 void DesktopPlatform::beginFrame(platform::Color color) {
@@ -119,7 +131,11 @@ LRESULT DesktopPlatform::handleMessage(HWND window, UINT message,
                                        WPARAM wParam, LPARAM lParam) {
     switch (message) {
         case WM_KEYDOWN:
-            if ((lParam & (1LL << 30)) == 0) keys_.push_back(static_cast<int>(wParam));
+            if ((lParam & (1LL << 30)) == 0) {
+                const int key = static_cast<int>(wParam);
+                keys_.push_back(key);
+                if (const auto action = actionForKey(key)) actions_.push_back(*action);
+            }
             return 0;
         case WM_PAINT: {
             PAINTSTRUCT ps{};
@@ -156,9 +172,11 @@ void DesktopPlatform::paint(HDC dc, const RECT& client) {
     }
     HGDIOBJ previousBitmap = SelectObject(buffer, bitmap);
 
-    const int scale = std::max(1, std::min(clientWidth / IRenderer::kLogicalWidth,
+    const int deviceAreaWidth = std::max(IRenderer::kLogicalWidth,
+        clientWidth - kDebugPanelWidth);
+    const int scale = std::max(1, std::min(deviceAreaWidth / IRenderer::kLogicalWidth,
                                            clientHeight / IRenderer::kLogicalHeight));
-    const int originX = (clientWidth - IRenderer::kLogicalWidth * scale) / 2;
+    const int originX = (deviceAreaWidth - IRenderer::kLogicalWidth * scale) / 2;
     const int originY = (clientHeight - IRenderer::kLogicalHeight * scale) / 2;
 
     HBRUSH black = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
@@ -202,10 +220,46 @@ void DesktopPlatform::paint(HDC dc, const RECT& client) {
         }
     }
 
+    paintDebugPanel(buffer, RECT{deviceAreaWidth, 0, clientWidth, clientHeight});
+
     BitBlt(dc, 0, 0, clientWidth, clientHeight, buffer, 0, 0, SRCCOPY);
     SelectObject(buffer, previousBitmap);
     DeleteObject(bitmap);
     DeleteDC(buffer);
+}
+
+void DesktopPlatform::paintDebugPanel(HDC dc, const RECT& bounds) {
+    if (bounds.right <= bounds.left) return;
+
+    HBRUSH panel = CreateSolidBrush(RGB(28, 37, 33));
+    FillRect(dc, &bounds, panel);
+    DeleteObject(panel);
+    HPEN border = CreatePen(PS_SOLID, 1, RGB(184, 212, 157));
+    HGDIOBJ previousPen = SelectObject(dc, border);
+    MoveToEx(dc, bounds.left, bounds.top, nullptr);
+    LineTo(dc, bounds.left, bounds.bottom);
+    SelectObject(dc, previousPen);
+    DeleteObject(border);
+
+    HFONT titleFont = CreateFontA(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        NONANTIALIASED_QUALITY, FIXED_PITCH | FF_MODERN, "Terminal");
+    HFONT bodyFont = CreateFontA(15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        NONANTIALIASED_QUALITY, FIXED_PITCH | FF_MODERN, "Terminal");
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(217, 230, 195));
+    HGDIOBJ previousFont = SelectObject(dc, titleFont);
+    TextOutA(dc, bounds.left + 18, 18, "DEBUG PANEL", 11);
+    SelectObject(dc, bodyFont);
+    int y = 56;
+    for (const auto& line : debugLines_) {
+        TextOutA(dc, bounds.left + 18, y, line.c_str(), static_cast<int>(line.size()));
+        y += 23;
+    }
+    SelectObject(dc, previousFont);
+    DeleteObject(titleFont);
+    DeleteObject(bodyFont);
 }
 
 }  // namespace neripal::desktop

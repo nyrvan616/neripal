@@ -1,5 +1,7 @@
 #include "DebugController.hpp"
 
+#include "neripal/core/Evolution.hpp"
+
 namespace neripal::simulator {
 
 void DebugController::restore(core::PetState state) { pet_.restore(state); }
@@ -16,6 +18,27 @@ void DebugController::adjustStat(int index, int delta) {
         case 2: state.energy += delta; break;
         case 3: state.health += delta; break;
         default: return;
+    }
+    restore(state);
+}
+
+void DebugController::forceEvolution() {
+    auto state = pet_.state();
+    switch (state.stage) {
+        case core::EvolutionStage::Egg:
+            state.stage = core::EvolutionStage::Baby;
+            state.ageMillis = 0;
+            break;
+        case core::EvolutionStage::Baby:
+            state.ageMillis = core::evolution::kChildAgeMs;
+            break;
+        case core::EvolutionStage::Child:
+            state.ageMillis = core::evolution::kAdultAgeMs;
+            break;
+        case core::EvolutionStage::Adult:
+            state.stage = core::EvolutionStage::Egg;
+            state.ageMillis = 0;
+            break;
     }
     restore(state);
 }

@@ -1,13 +1,13 @@
 # WaveshareS3Platform
 
-Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.1.0.
+Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.2.0.
 
 ## Implementado
 
 - `Esp32Clock` monotónico mediante `esp_timer_get_time()`.
 - GPIO2 como battery power-hold y GPIO46 como backlight activo alto.
 - Botones activos bajos en GPIO0, GPIO5 y GPIO4.
-- Mapeo provisional: feed, train y alternar sleep/wake.
+- Mapeo provisional V-Pet: botón 1 siguiente, botón 2 confirmar y botón 3 volver.
 - Identificación de versión por Serial; `PetView` muestra la misma versión en UI.
 - Contratos `IInput` e `IRenderer` completos a nivel de compilación.
 - Target PlatformIO N16R8: flash de 16 MB, PSRAM octal y particiones OTA.
