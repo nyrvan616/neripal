@@ -1,5 +1,6 @@
 #pragma once
 
+#include "neripal/core/Care.hpp"
 #include "neripal/core/IClock.hpp"
 #include "neripal/core/PetState.hpp"
 
@@ -13,10 +14,11 @@ public:
 
     const PetState& state() const noexcept { return state_; }
 
-    void feed();
-    void train();
-    void sleep();
-    void wake();
+    CareResult feed();
+    CareResult train();
+    CareResult sleep();
+    CareResult wake();
+    CareResult clean();
     void update();
     void reset();
 

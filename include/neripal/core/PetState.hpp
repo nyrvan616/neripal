@@ -11,6 +11,7 @@ struct PetState {
     int happiness = 75;    // 0 = minimum, 100 = maximum
     int energy = 80;       // 0 = empty, 100 = full
     int health = 100;      // 0 = minimum, 100 = maximum
+    int hygiene = 80;      // 0 = dirty, 100 = clean
     std::uint64_t ageMillis = 0;
     bool sleeping = false;
     EvolutionStage stage = EvolutionStage::Baby;
