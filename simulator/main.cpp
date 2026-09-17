@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
             }
         }
         while (const auto action = platform.pollAction()) {
-            ui.handleInput(*action);
+            ui.handleInput(*action, pet.state());
         }
         pet.update();
         ui.update(clock.nowMillis());

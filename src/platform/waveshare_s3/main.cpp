@@ -19,7 +19,7 @@ void setup() {
 
 void loop() {
     while (const auto action = platform.pollAction()) {
-        ui.handleInput(*action);
+        ui.handleInput(*action, pet.state());
     }
     pet.update();
     ui.update(clockSource.nowMillis());

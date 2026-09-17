@@ -1,3 +1,4 @@
+#include "neripal/core/Care.hpp"
 #include "neripal/core/PetState.hpp"
 #include "neripal/platform/IRenderer.hpp"
 #include "neripal/ui/PetView.hpp"
@@ -10,6 +11,8 @@
 #include <vector>
 
 namespace {
+using neripal::core::CareAction;
+using neripal::core::PetState;
 using neripal::platform::Color;
 using neripal::platform::InputAction;
 
@@ -37,29 +40,79 @@ public:
     std::vector<std::string> texts;
 };
 
-bool menuNavigationWraps() {
+bool menuNavigationWrapsSixItems() {
+    PetState pet;
     neripal::ui::UiController ui;
     ui.update(0);
-    ui.handleInput(InputAction::Confirm);
+    ui.handleInput(InputAction::Confirm, pet);
     if (ui.state().screen != neripal::ui::Screen::MainMenu) return false;
-    ui.handleInput(InputAction::Next);
-    if (ui.state().menuIndex != 1 || ui.state().menuSelectionProgress != 0.0F) return false;
-    ui.update(60);
-    if (ui.state().menuSelectionProgress <= 0.0F || ui.state().menuSelectionProgress >= 1.0F) {
-        return false;
+    for (int i = 1; i < neripal::ui::UiController::kMenuItemCount; ++i) {
+        ui.handleInput(InputAction::Next, pet);
+        if (ui.state().menuIndex != i) return false;
     }
-    ui.update(120);
-    ui.handleInput(InputAction::Next);
+    ui.handleInput(InputAction::Next, pet);
     return ui.state().menuIndex == 0;
 }
 
 bool statusReturnsToMenu() {
+    PetState pet;
     neripal::ui::UiController ui;
-    ui.handleInput(InputAction::Confirm);
-    ui.handleInput(InputAction::Confirm);
+    ui.handleInput(InputAction::Confirm, pet);
+    for (int i = 0; i < 4; ++i) {
+        ui.handleInput(InputAction::Next, pet);
+    }
+    if (ui.state().menuIndex != 4) return false;
+    ui.handleInput(InputAction::Confirm, pet);
     if (ui.state().screen != neripal::ui::Screen::Status) return false;
-    ui.handleInput(InputAction::Back);
+    ui.handleInput(InputAction::Back, pet);
     return ui.state().screen == neripal::ui::Screen::MainMenu;
+}
+
+bool feedEnqueuesCareActionAndReturnsHome() {
+    PetState pet;
+    neripal::ui::UiController ui;
+    ui.handleInput(InputAction::Confirm, pet);
+    if (ui.state().menuIndex != 0) return false;
+    ui.handleInput(InputAction::Confirm, pet);
+    if (ui.state().screen != neripal::ui::Screen::Home) return false;
+    const auto action = ui.takeCareAction();
+    return action.has_value() && *action == CareAction::Feed;
+}
+
+bool sleepMenuSelectsWakeWhenSleeping() {
+    PetState pet;
+    pet.sleeping = true;
+    neripal::ui::UiController ui;
+    ui.handleInput(InputAction::Confirm, pet);
+    ui.handleInput(InputAction::Next, pet);
+    ui.handleInput(InputAction::Next, pet);
+    if (ui.state().menuIndex != 2) return false;
+    ui.handleInput(InputAction::Confirm, pet);
+    const auto action = ui.takeCareAction();
+    return action.has_value() && *action == CareAction::Wake;
+}
+
+bool sleepMenuSelectsSleepWhenAwake() {
+    PetState pet;
+    neripal::ui::UiController ui;
+    ui.handleInput(InputAction::Confirm, pet);
+    ui.handleInput(InputAction::Next, pet);
+    ui.handleInput(InputAction::Next, pet);
+    if (ui.state().menuIndex != 2) return false;
+    ui.handleInput(InputAction::Confirm, pet);
+    const auto action = ui.takeCareAction();
+    return action.has_value() && *action == CareAction::Sleep;
+}
+
+bool statusDoesNotEnqueueCareAction() {
+    PetState pet;
+    neripal::ui::UiController ui;
+    ui.handleInput(InputAction::Confirm, pet);
+    for (int i = 0; i < 4; ++i) {
+        ui.handleInput(InputAction::Next, pet);
+    }
+    ui.handleInput(InputAction::Confirm, pet);
+    return !ui.takeCareAction().has_value();
 }
 
 bool idleAnimationUsesControlledTime() {
@@ -72,8 +125,25 @@ bool idleAnimationUsesControlledTime() {
     return ui.state().idleFrame == 0;
 }
 
+bool statusShowsHygieneBar() {
+    PetState pet;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+    ui.handleInput(InputAction::Confirm, pet);
+    for (int i = 0; i < 4; ++i) {
+        ui.handleInput(InputAction::Next, pet);
+    }
+    ui.handleInput(InputAction::Confirm, pet);
+    view.render(renderer, pet, ui.state());
+    for (const auto& text : renderer.texts) {
+        if (text == "HYG") return true;
+    }
+    return false;
+}
+
 bool everyScreenStaysInsideLogicalViewport() {
-    neripal::core::PetState pet;
+    PetState pet;
     neripal::ui::PetView view;
     neripal::ui::UiController ui;
     FakeRenderer renderer;
@@ -99,9 +169,13 @@ bool everyScreenStaysInsideLogicalViewport() {
         pet.stage = stage;
         if (!renderAndCheck()) return false;
     }
-    ui.handleInput(InputAction::Confirm);
+    ui.handleInput(InputAction::Confirm, pet);
     if (!renderAndCheck()) return false;
-    ui.handleInput(InputAction::Confirm);
+    for (int i = 0; i < neripal::ui::UiController::kMenuItemCount; ++i) {
+        if (!renderAndCheck()) return false;
+        ui.handleInput(InputAction::Next, pet);
+    }
+    ui.handleInput(InputAction::Confirm, pet);
     for (const auto stage : {neripal::core::EvolutionStage::Egg,
                              neripal::core::EvolutionStage::Baby,
                              neripal::core::EvolutionStage::Child,
@@ -113,7 +187,7 @@ bool everyScreenStaysInsideLogicalViewport() {
 }
 
 bool deviceViewsContainNoDebugLabels() {
-    neripal::core::PetState pet;
+    PetState pet;
     neripal::ui::PetView view;
     neripal::ui::UiController ui;
     FakeRenderer renderer;
@@ -131,9 +205,14 @@ bool deviceViewsContainNoDebugLabels() {
 
 int main() {
     const std::vector<TestCase> tests{
-        {"menu navigation wraps", menuNavigationWraps},
+        {"menu navigation wraps six items", menuNavigationWrapsSixItems},
         {"status returns to menu", statusReturnsToMenu},
+        {"feed enqueues care action and returns home", feedEnqueuesCareActionAndReturnsHome},
+        {"sleep menu selects wake when sleeping", sleepMenuSelectsWakeWhenSleeping},
+        {"sleep menu selects sleep when awake", sleepMenuSelectsSleepWhenAwake},
+        {"status does not enqueue care action", statusDoesNotEnqueueCareAction},
         {"idle animation uses controlled time", idleAnimationUsesControlledTime},
+        {"status shows hygiene bar", statusShowsHygieneBar},
         {"every screen stays inside logical viewport", everyScreenStaysInsideLogicalViewport},
         {"device views contain no debug labels", deviceViewsContainNoDebugLabels},
     };
