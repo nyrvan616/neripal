@@ -21,6 +21,9 @@ void loop() {
     while (const auto action = platform.pollAction()) {
         ui.handleInput(*action, pet.state());
     }
+    if (const auto care = ui.takeCareAction()) {
+        pet.apply(*care);
+    }
     pet.update();
     ui.update(clockSource.nowMillis());
     view.render(platform, pet.state(), ui.state());

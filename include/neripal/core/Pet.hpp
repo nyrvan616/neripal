@@ -19,6 +19,7 @@ public:
     CareResult sleep();
     CareResult wake();
     CareResult clean();
+    CareResult apply(CareAction action);
     void update();
     void reset();
 

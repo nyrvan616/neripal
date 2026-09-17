@@ -56,6 +56,17 @@ CareResult Pet::clean() {
     return CareResult::Applied;
 }
 
+CareResult Pet::apply(CareAction action) {
+    switch (action) {
+        case CareAction::Feed: return feed();
+        case CareAction::Train: return train();
+        case CareAction::Sleep: return sleep();
+        case CareAction::Wake: return wake();
+        case CareAction::Clean: return clean();
+    }
+    return CareResult::RejectedAlreadyAwake;
+}
+
 void Pet::applyNeedsStep() {
     state_.hunger = clampStat(state_.hunger + balance::kHungerPerStep);
     state_.energy = clampStat(state_.energy +

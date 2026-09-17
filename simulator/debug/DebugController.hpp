@@ -16,11 +16,13 @@ public:
     void setHappiness(int value);
     void setEnergy(int value);
     void setHealth(int value);
+    void setHygiene(int value);
     void adjustStat(int index, int delta);
     void feed() { pet_.feed(); }
     void train() { pet_.train(); }
     void sleep() { pet_.sleep(); }
     void wake() { pet_.wake(); }
+    void clean() { pet_.clean(); }
     void reset() { pet_.reset(); }
     void forceEvolution();
 

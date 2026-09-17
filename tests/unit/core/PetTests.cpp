@@ -223,6 +223,31 @@ bool wakeRejectedWhenAlreadyAwake() {
     const auto before = pet.state();
     return pet.wake() == CareResult::RejectedAlreadyAwake && sameCareStats(before, pet.state());
 }
+bool applyDispatchesCareActions() {
+    using neripal::core::CareAction;
+    FakeClock clock; Pet pet(clock);
+    const int hungerBefore = pet.state().hunger;
+    if (pet.apply(CareAction::Feed) != CareResult::Applied ||
+        pet.state().hunger >= hungerBefore) {
+        return false;
+    }
+    if (pet.apply(CareAction::Sleep) != CareResult::Applied || !pet.state().sleeping) {
+        return false;
+    }
+    const auto asleep = pet.state();
+    if (pet.apply(CareAction::Train) != CareResult::RejectedAsleep ||
+        !sameCareStats(asleep, pet.state())) {
+        return false;
+    }
+    if (pet.apply(CareAction::Wake) != CareResult::Applied || pet.state().sleeping) {
+        return false;
+    }
+    auto dirty = pet.state();
+    dirty.hygiene = 20;
+    pet.restore(dirty);
+    return pet.apply(CareAction::Clean) == CareResult::Applied &&
+           pet.state().hygiene > 20;
+}
 }
 
 int main() {
@@ -254,6 +279,7 @@ int main() {
         {"train rejected without energy", trainRejectedWithoutEnergy},
         {"sleep rejected when already sleeping", sleepRejectedWhenAlreadySleeping},
         {"wake rejected when already awake", wakeRejectedWhenAlreadyAwake},
+        {"apply dispatches care actions", applyDispatchesCareActions},
     };
 
     int failures = 0;

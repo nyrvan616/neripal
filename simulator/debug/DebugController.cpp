@@ -9,6 +9,7 @@ void DebugController::setHunger(int value) { auto s = pet_.state(); s.hunger = v
 void DebugController::setHappiness(int value) { auto s = pet_.state(); s.happiness = value; restore(s); }
 void DebugController::setEnergy(int value) { auto s = pet_.state(); s.energy = value; restore(s); }
 void DebugController::setHealth(int value) { auto s = pet_.state(); s.health = value; restore(s); }
+void DebugController::setHygiene(int value) { auto s = pet_.state(); s.hygiene = value; restore(s); }
 
 void DebugController::adjustStat(int index, int delta) {
     auto state = pet_.state();
@@ -17,6 +18,7 @@ void DebugController::adjustStat(int index, int delta) {
         case 1: state.happiness += delta; break;
         case 2: state.energy += delta; break;
         case 3: state.health += delta; break;
+        case 4: state.hygiene += delta; break;
         default: return;
     }
     restore(state);
