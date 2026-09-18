@@ -1,4 +1,4 @@
-# NeriPal 0.2.0
+# NeriPal 0.3.0
 
 Mascota virtual retro-moderna para Windows y la placa Waveshare
 ESP32-S3-Touch-LCD-1.54. El proyecto comparte un Game Core C++17 entre el
@@ -14,42 +14,38 @@ directorio que lo contiene ni repositorios hermanos. En esta documentación,
 
 | Área | Estado | Alcance actual |
 |---|---|---|
-| Game Core | Operativo | Stats, feed, train, sleep/wake, edad, degradación y evolución simple |
-| Simulador Windows | Operativo | Ventana 240x240 escalada, teclado y Debug Tools |
-| UI V-Pet | Operativa | Home, menú y Status con primer pase visual color inspirado en estética retro de GBA |
-| Tests | Operativos | 18/18 tests deterministas: 13 Core y 5 UI |
+| Game Core | Operativo | Hunger, happiness, energy, health, hygiene; feed/train/sleep/wake/clean; `CareResult` |
+| Simulador Windows | Operativo | Menú de cuidado 240x240, teclado de dispositivo y Debug Tools laterales |
+| UI V-Pet | Operativa | Home, menú 2x3, Status con HYG y overlays de feedback |
+| Tests | Operativos | Tests deterministas Core + UI (FakeClock y renderer falso) |
 | Build ESP32-S3 | Operativo | Firmware compilado para 16 MB flash y PSRAM octal |
 | HAL Waveshare | Base parcial | Reloj, power-hold, backlight y tres botones |
-| Display/touch/audio/IMU | Pendiente | Pinout y estrategia documentados; drivers aún no integrados |
+| Display/touch/audio/IMU | Pendiente | Pinout documentado; ST7789 sigue stub |
 
-Esta versión está lista para continuar el desarrollo y para demostrar arquitectura
-y gameplay mínimo en Windows. No está lista todavía para una demo visual sobre la
-placa física, porque el renderer ST7789 sigue siendo un stub sin salida gráfica.
+Esta versión cierra el loop de crianza básica en el dispositivo lógico. No está
+lista para una demo visual sobre la placa física: el renderer ST7789 no dibuja.
 
-El contraste completo contra el brief está en
-[`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md).
+El cierre de 0.3 está en [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md). El
+diagnóstico histórico de 0.1 permanece en [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md).
 
 ## Funcionalidad disponible
 
-- `PetState`: hunger, happiness, energy, health, age, sleeping y evolution stage.
-- Acciones: feed, train, sleep, wake y reset.
-- Actualización de necesidades por tiempo simulado.
-- Evolución mínima por edad: Baby, Child y Adult.
+- `PetState`: hunger, happiness, energy, health, hygiene, age, sleeping y stage.
+- Acciones de cuidado: feed, train, sleep, wake, clean, con rechazos motivados.
+- Menú de dispositivo: FEED, TRAIN, SLEEP/WAKE, CLEAN, STATUS, HOME.
+- Overlays de feedback (~900 ms) según `CareResult`, dentro de 240x240.
+- Degradación temporal: hambre, energía, hygiene en vigilia, felicidad y salud.
+- Evolución mínima por edad: Egg (preview), Baby, Child y Adult.
 - Reloj desktop acelerable x1, x10, x100 y x1000.
-- Avance manual de una hora simulada.
-- Edición de stats desde Debug Tools, sin setters de debug dentro del Core.
-- Home, menú principal y pantalla Status en el mismo viewport lógico 240x240.
-- Navegación de tres botones: siguiente, confirmar y volver.
-- Idle de mascota y selector de menú temporizados, sin bloqueos.
-- Panel de debug separado visualmente del dispositivo en el simulador.
-- Vista placeholder original creada con primitivas del renderer.
-- Firmware mínimo con tres botones orientados a navegación V-Pet.
+- Debug Tools fuera del viewport: stats (incl. hygiene), L=clean, sin setters en Pet.
+- Firmware con el mismo cableado de cuidado que el simulador; sin DebugController.
 - Versión visible en la cabecera del juego, consola desktop y Serial del ESP32.
 
 ## No incluido todavía
 
 - Render real en ST7789 y lectura CST816T.
 - Persistencia, recuperación del tiempo apagado o versionado de saves.
+- Comportamiento autónomo (idle, sueño espontáneo, enfermedad, eventos).
 - Audio ES8311, IMU QMI8658 y medición/calibración de batería.
 - Wi-Fi gameplay, ESP-NOW, combate, multiplayer, tienda o inventario.
 - Evolución ramificada, minijuegos o aleatoriedad abstraída.
@@ -117,7 +113,7 @@ firmware y solución de problemas están reunidos en
 | Tecla | Acción |
 |---|---|
 | `Z` / `Right` | Siguiente opción del dispositivo |
-| `X` / `Enter` | Confirmar |
+| `X` / `Enter` | Confirmar (FEED/TRAIN/SLEEP/CLEAN aplican al Pet) |
 | `C` / `Backspace` | Volver |
 | `Esc` | Salir |
 
@@ -127,11 +123,12 @@ El panel lateral de debug conserva estas herramientas de desarrollo:
 |---|---|
 | `F`, `T` | Alimentar, entrenar |
 | `S`, `W` | Dormir/despertar |
+| `L` | Limpiar |
 | `R` | Reset |
 | `1`, `2`, `3`, `4` | Tiempo x1, x10, x100, x1000 |
 | `A` | Avanzar una hora simulada |
 | `E` | Forzar la siguiente evolución visual |
-| `Tab` | Seleccionar stat |
+| `Tab` | Seleccionar stat (incluye hygiene) |
 | `Up` / `Down` | Cambiar stat seleccionado ±5 |
 | `Home` / `End` | Llevar stat a 100/0 |
 
@@ -147,6 +144,7 @@ src/platform/desktop/      ventana, input y reloj Windows
 src/platform/waveshare_s3/ HAL y composition root ESP32
 simulator/debug/           herramientas exclusivas de desarrollo
 tests/unit/core/           tests host y FakeClock
+tests/unit/ui/             tests de navegación, overlays y viewport
 assets/placeholders/       reserva para arte original
 docs/                      arquitectura, desarrollo, hardware y diagnóstico
 ```
@@ -157,7 +155,8 @@ docs/                      arquitectura, desarrollo, hardware y diagnóstico
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): capas y dependencias.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): compilación, ejecución, tests y debug.
 - [`docs/HARDWARE.md`](docs/HARDWARE.md): configuración, pinout y estado de la HAL.
-- [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md): diagnóstico para liderazgo.
+- [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md): cierre de la 0.3.
+- [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md): diagnóstico histórico de la 0.1.
 - [`tests/README.md`](tests/README.md): alcance de pruebas.
 - [`src/platform/waveshare_s3/README.md`](src/platform/waveshare_s3/README.md): estado real de la HAL.
 
@@ -165,5 +164,5 @@ docs/                      arquitectura, desarrollo, hardware y diagnóstico
 
 Implementar `IRenderer` sobre ST7789 con Arduino_GFX, manteniendo intactos Core y
 `PetView`; después integrar CST816T y validar físicamente rotación, inversión,
-touch, PSRAM y batería. La persistencia versionada debería entrar antes de expandir
-gameplay o evolución.
+touch, PSRAM y batería. El comportamiento autónomo del roadmap 0.4 no forma parte
+de esta entrega.

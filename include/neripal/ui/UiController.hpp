@@ -21,18 +21,24 @@ struct UiState {
     int previousMenuIndex = 0;
     int idleFrame = 0;
     float menuSelectionProgress = 1.0F;
+    bool careFeedbackActive = false;
+    core::CareAction careAction = core::CareAction::Feed;
+    core::CareResult careResult = core::CareResult::Applied;
 };
 
 // Owns transient presentation state only. It never mutates the game Core.
 class UiController {
 public:
     static constexpr int kMenuItemCount = 6;
+    static constexpr std::uint64_t kCareFeedbackMillis = 900;
 
     const UiState& state() const noexcept { return state_; }
 
     void handleInput(platform::InputAction action, const core::PetState& petState);
     void update(std::uint64_t nowMillis);
     std::optional<core::CareAction> takeCareAction();
+    void beginCareFeedback(core::CareAction action, core::CareResult result,
+                           std::uint64_t nowMillis);
 
 private:
     void openMenu();
@@ -43,6 +49,7 @@ private:
     std::optional<core::CareAction> pendingCareAction_;
     std::uint64_t lastNowMillis_ = 0;
     std::uint64_t selectionStartedMillis_ = 0;
+    std::uint64_t careFeedbackStartedMillis_ = 0;
     bool hasTime_ = false;
 };
 

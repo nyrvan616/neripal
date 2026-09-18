@@ -23,18 +23,15 @@ Para ver cada caso:
 
 ## Cobertura funcional actual
 
-- Feed reduce hunger y respeta el límite inferior.
-- Train consume energía.
-- Sleep recupera energía sin superar 100.
-- Happiness y health son normalizados dentro de rango.
-- El tiempo controlado incrementa hunger y modifica energy según sueño/vigilia.
-- La edad avanza sin `sleep()` real.
-- Restauración normaliza un snapshot inválido.
-- La evolución Baby → Child → Adult usa edad controlada.
-- Navegación Home → menú → Status y retorno.
-- Wrap de selección y transición interpolada de menú.
-- Idle de mascota con tiempo controlado.
-- Render de cada pantalla dentro del viewport 240x240.
+- Feed, train, sleep, wake y clean con `CareResult` motivado.
+- Hygiene: clamp, decay despierto, Clean y efecto sobre felicidad/salud.
+- `Pet::apply` despacha `CareAction` sin duplicar reglas.
+- Restauración normaliza un snapshot inválido, incluida hygiene.
+- Evolución Egg → Baby → Child → Adult con edad controlada.
+- Menú 2x3, SLEEP/WAKE según snapshot, STATUS con barra HYG.
+- Overlay de feedback aparece y caduca con tiempo controlado.
+- Rechazo muestra el label del `CareResult` (ASLEEP/TIRED/RESTING/AWAKE).
+- Render de cada pantalla y overlays dentro del viewport 240x240.
 - Ausencia de etiquetas de debug en las vistas del dispositivo.
 
 ## Pendiente

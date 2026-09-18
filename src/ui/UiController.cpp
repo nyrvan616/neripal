@@ -87,11 +87,25 @@ std::optional<core::CareAction> UiController::takeCareAction() {
     return pending;
 }
 
+void UiController::beginCareFeedback(core::CareAction action, core::CareResult result,
+                                     std::uint64_t nowMillis) {
+    state_.careFeedbackActive = true;
+    state_.careAction = action;
+    state_.careResult = result;
+    careFeedbackStartedMillis_ = nowMillis;
+    if (!hasTime_ || nowMillis < lastNowMillis_) {
+        hasTime_ = true;
+        lastNowMillis_ = nowMillis;
+        selectionStartedMillis_ = nowMillis;
+    }
+}
+
 void UiController::update(std::uint64_t nowMillis) {
     if (!hasTime_ || nowMillis < lastNowMillis_) {
         hasTime_ = true;
         lastNowMillis_ = nowMillis;
         selectionStartedMillis_ = nowMillis;
+        careFeedbackStartedMillis_ = nowMillis;
     }
 
     state_.idleFrame = static_cast<int>((nowMillis / kIdleFrameMillis) % 2ULL);
@@ -103,6 +117,12 @@ void UiController::update(std::uint64_t nowMillis) {
             1.0F, static_cast<float>(elapsed) / static_cast<float>(kMenuSelectionMillis));
         if (state_.menuSelectionProgress >= 1.0F) {
             state_.previousMenuIndex = state_.menuIndex;
+        }
+    }
+    if (state_.careFeedbackActive) {
+        if (nowMillis < careFeedbackStartedMillis_ ||
+            nowMillis - careFeedbackStartedMillis_ >= kCareFeedbackMillis) {
+            state_.careFeedbackActive = false;
         }
     }
     lastNowMillis_ = nowMillis;

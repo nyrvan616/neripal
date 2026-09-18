@@ -65,7 +65,8 @@ int main(int argc, char* argv[]) {
             ui.handleInput(*action, pet.state());
         }
         if (const auto care = ui.takeCareAction()) {
-            pet.apply(*care);
+            const auto result = pet.apply(*care);
+            ui.beginCareFeedback(*care, result, clock.nowMillis());
         }
         pet.update();
         ui.update(clock.nowMillis());

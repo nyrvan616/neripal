@@ -1,6 +1,6 @@
 # WaveshareS3Platform
 
-Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.2.0.
+Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.3.0.
 
 ## Implementado
 

@@ -8,10 +8,12 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
 using neripal::core::CareAction;
+using neripal::core::CareResult;
 using neripal::core::PetState;
 using neripal::platform::Color;
 using neripal::platform::InputAction;
@@ -201,6 +203,71 @@ bool deviceViewsContainNoDebugLabels() {
     }
     return true;
 }
+
+bool careFeedbackAppearsAndExpires() {
+    neripal::ui::UiController ui;
+    ui.update(0);
+    ui.beginCareFeedback(CareAction::Feed, CareResult::Applied, 0);
+    if (!ui.state().careFeedbackActive) return false;
+    ui.update(899);
+    if (!ui.state().careFeedbackActive) return false;
+    ui.update(neripal::ui::UiController::kCareFeedbackMillis);
+    return !ui.state().careFeedbackActive;
+}
+
+bool rejectedFeedbackUsesCareResultLabel() {
+    PetState pet;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+    ui.beginCareFeedback(CareAction::Train, CareResult::RejectedNoEnergy, 0);
+    view.render(renderer, pet, ui.state());
+    bool sawTired = false;
+    for (const auto& text : renderer.texts) {
+        if (text == "TIRED") sawTired = true;
+    }
+    if (!sawTired) return false;
+
+    renderer = FakeRenderer{};
+    ui.beginCareFeedback(CareAction::Feed, CareResult::RejectedAsleep, 0);
+    view.render(renderer, pet, ui.state());
+    for (const auto& text : renderer.texts) {
+        if (text == "ASLEEP") return true;
+    }
+    return false;
+}
+
+bool overlaysStayInsideLogicalViewport() {
+    PetState pet;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+    const std::pair<CareAction, CareResult> cases[] = {
+        {CareAction::Feed, CareResult::Applied},
+        {CareAction::Train, CareResult::Applied},
+        {CareAction::Sleep, CareResult::Applied},
+        {CareAction::Wake, CareResult::Applied},
+        {CareAction::Clean, CareResult::Applied},
+        {CareAction::Feed, CareResult::RejectedAsleep},
+        {CareAction::Train, CareResult::RejectedNoEnergy},
+        {CareAction::Sleep, CareResult::RejectedAlreadySleeping},
+        {CareAction::Wake, CareResult::RejectedAlreadyAwake},
+    };
+    for (const auto& [action, result] : cases) {
+        ui.beginCareFeedback(action, result, 0);
+        renderer = FakeRenderer{};
+        view.render(renderer, pet, ui.state());
+        if (!renderer.beganFrame || !renderer.endedFrame) return false;
+        for (const auto& rect : renderer.rectangles) {
+            if (rect.x < 0 || rect.y < 0 || rect.width < 0 || rect.height < 0 ||
+                rect.x + rect.width > FakeRenderer::kLogicalWidth ||
+                rect.y + rect.height > FakeRenderer::kLogicalHeight) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 }
 
 int main() {
@@ -215,6 +282,9 @@ int main() {
         {"status shows hygiene bar", statusShowsHygieneBar},
         {"every screen stays inside logical viewport", everyScreenStaysInsideLogicalViewport},
         {"device views contain no debug labels", deviceViewsContainNoDebugLabels},
+        {"care feedback appears and expires", careFeedbackAppearsAndExpires},
+        {"rejected feedback uses care result label", rejectedFeedbackUsesCareResultLabel},
+        {"overlays stay inside logical viewport", overlaysStayInsideLogicalViewport},
     };
 
     int failures = 0;
