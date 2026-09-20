@@ -64,6 +64,7 @@ Ejecutar directamente la suite y ver sus casos individuales:
 
 ```powershell
 .\build\windows-debug\neripal_core_tests.exe
+.\build\windows-debug\neripal_ui_tests.exe
 ```
 
 El script portable obtiene la raíz a partir de su propia ubicación, por lo que no

@@ -44,6 +44,7 @@ int main(int argc, char* argv[]) {
                 case 'T': debug.train(); break;
                 case 'S': pet.state().sleeping ? debug.wake() : debug.sleep(); break;
                 case 'W': debug.wake(); break;
+                case 'L': debug.clean(); break;
                 case 'R': debug.reset(); break;
                 case '1': debug.setTimeScale(1); break;
                 case '2': debug.setTimeScale(10); break;
@@ -51,7 +52,7 @@ int main(int argc, char* argv[]) {
                 case '4': debug.setTimeScale(1000); break;
                 case 'A': debug.advanceMinutes(60); break;
                 case 'E': debug.forceEvolution(); break;
-                case VK_TAB: selectedStat = (selectedStat + 1) % 4; break;
+                case VK_TAB: selectedStat = (selectedStat + 1) % 5; break;
                 case VK_UP: debug.adjustStat(selectedStat, 5); break;
                 case VK_DOWN: debug.adjustStat(selectedStat, -5); break;
                 case VK_HOME: debug.adjustStat(selectedStat, 100); break;
@@ -61,13 +62,17 @@ int main(int argc, char* argv[]) {
             }
         }
         while (const auto action = platform.pollAction()) {
-            ui.handleInput(*action);
+            ui.handleInput(*action, pet.state());
+        }
+        if (const auto care = ui.takeCareAction()) {
+            const auto result = pet.apply(*care);
+            ui.beginCareFeedback(*care, result, clock.nowMillis());
         }
         pet.update();
         ui.update(clock.nowMillis());
 
-        static constexpr std::array<std::string_view, 4> kStatNames{
-            "HUNGER", "HAPPINESS", "ENERGY", "HEALTH"};
+        static constexpr std::array<std::string_view, 5> kStatNames{
+            "HUNGER", "HAPPINESS", "ENERGY", "HEALTH", "HYGIENE"};
         platform.setDebugLines({
             "DEVICE CONTROLS",
             "Z/RIGHT  next",
@@ -82,7 +87,8 @@ int main(int argc, char* argv[]) {
             "",
             "F feed   T train",
             "S sleep  W wake",
-            "R reset  A +1 hour",
+            "L clean  R reset",
+            "A +1 hour",
             "E force evolution",
             "1-4 time scale",
         });

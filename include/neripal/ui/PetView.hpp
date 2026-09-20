@@ -13,7 +13,7 @@ public:
 
 private:
     static void drawPet(platform::IRenderer& renderer, int x, int y, int idleFrame,
-                        bool sleeping, core::EvolutionStage stage);
+                        int extraBob, bool sleeping, core::EvolutionStage stage);
     static void drawStat(platform::IRenderer& renderer, int y, const char* label,
                          int value, platform::Color color);
 };

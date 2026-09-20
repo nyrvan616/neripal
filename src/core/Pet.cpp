@@ -18,35 +18,69 @@ void Pet::anchorClock() {
     lastUpdateMs_ = clock_.nowMillis();
 }
 
-void Pet::feed() {
+CareResult Pet::feed() {
+    if (state_.sleeping) return CareResult::RejectedAsleep;
     state_.hunger = clampStat(state_.hunger + balance::kFeedHunger);
     state_.happiness = clampStat(state_.happiness + balance::kFeedHappiness);
+    state_.hygiene = clampStat(state_.hygiene + balance::kFeedHygiene);
+    return CareResult::Applied;
 }
 
-void Pet::train() {
+CareResult Pet::train() {
+    if (state_.sleeping) return CareResult::RejectedAsleep;
+    if (state_.energy < -balance::kTrainEnergy) return CareResult::RejectedNoEnergy;
     state_.energy = clampStat(state_.energy + balance::kTrainEnergy);
     state_.hunger = clampStat(state_.hunger + balance::kTrainHunger);
     state_.happiness = clampStat(state_.happiness + balance::kTrainHappiness);
     state_.health = clampStat(state_.health + balance::kTrainHealth);
+    state_.hygiene = clampStat(state_.hygiene + balance::kTrainHygiene);
+    return CareResult::Applied;
 }
 
-void Pet::sleep() {
+CareResult Pet::sleep() {
+    if (state_.sleeping) return CareResult::RejectedAlreadySleeping;
     state_.sleeping = true;
+    return CareResult::Applied;
 }
 
-void Pet::wake() {
+CareResult Pet::wake() {
+    if (!state_.sleeping) return CareResult::RejectedAlreadyAwake;
     state_.sleeping = false;
+    return CareResult::Applied;
+}
+
+CareResult Pet::clean() {
+    if (state_.sleeping) return CareResult::RejectedAsleep;
+    state_.hygiene = clampStat(state_.hygiene + balance::kCleanHygiene);
+    state_.happiness = clampStat(state_.happiness + balance::kCleanHappiness);
+    return CareResult::Applied;
+}
+
+CareResult Pet::apply(CareAction action) {
+    switch (action) {
+        case CareAction::Feed: return feed();
+        case CareAction::Train: return train();
+        case CareAction::Sleep: return sleep();
+        case CareAction::Wake: return wake();
+        case CareAction::Clean: return clean();
+    }
+    return CareResult::RejectedAlreadyAwake;
 }
 
 void Pet::applyNeedsStep() {
     state_.hunger = clampStat(state_.hunger + balance::kHungerPerStep);
     state_.energy = clampStat(state_.energy +
         (state_.sleeping ? balance::kSleepEnergyPerStep : balance::kAwakeEnergyPerStep));
+    if (!state_.sleeping) {
+        state_.hygiene = clampStat(state_.hygiene + balance::kHygienePerAwakeStep);
+    }
 
-    if (state_.hunger >= balance::kNeglectThreshold) {
+    if (state_.hunger >= balance::kNeglectThreshold ||
+        state_.hygiene <= balance::kHygieneNeglectThreshold) {
         state_.happiness = clampStat(state_.happiness + balance::kHappinessNeglectPerStep);
     }
-    if (state_.hunger == balance::kMaxStat || state_.energy == balance::kMinStat) {
+    if (state_.hunger == balance::kMaxStat || state_.energy == balance::kMinStat ||
+        state_.hygiene == balance::kMinStat) {
         state_.health = clampStat(state_.health + balance::kCriticalHealthPerStep);
     }
 }
@@ -96,6 +130,7 @@ void Pet::restore(const PetState& state) {
     state_.happiness = clampStat(state_.happiness);
     state_.energy = clampStat(state_.energy);
     state_.health = clampStat(state_.health);
+    state_.hygiene = clampStat(state_.hygiene);
     updateEvolution();
     needsRemainderMs_ = 0;
     anchorClock();

@@ -2,7 +2,7 @@
 
 ## Target
 
-El firmware 0.2.0 apunta a Waveshare ESP32-S3-Touch-LCD-1.54 mediante el entorno
+El firmware 0.3.0 apunta a Waveshare ESP32-S3-Touch-LCD-1.54 mediante el entorno
 PlatformIO `waveshare_s3_154`. La configuración usa Arduino, C++17, flash de 16 MB,
 PSRAM octal y la tabla local `partitions_16mb.csv`.
 
@@ -34,12 +34,13 @@ flash y PSRAM debe confirmarse sobre la placa física durante el arranque.
 | Audio DIN | GPIO11 |
 | SD-MMC CLK/CMD/D0/D1/D2/D3 | GPIO16/15/17/18/13/14 |
 
-## Estado en 0.2.0
+## Estado en 0.3.0
 
 La HAL habilita power-hold, backlight y tres botones, ofrece reloj monotónico y
 acepta las primitivas de `IRenderer`. Los botones representan siguiente, confirmar
-y volver para la navegación V-Pet. El renderer físico sigue siendo no-op: el
-firmware compila y ejecuta Core/UI, pero aún no presenta la interfaz en el LCD.
+y volver para la navegación V-Pet, incluido el menú de cuidado. El renderer físico
+sigue siendo no-op: el firmware compila y ejecuta Core/UI (Feed/Train/Sleep/Wake/
+Clean), pero aún no presenta la interfaz en el LCD.
 
 Tampoco están integrados CST816T, QMI8658, ADC de batería, audio o SD-MMC. La
 lectura de botones es provisional y requiere debounce y validación de GPIO0 durante

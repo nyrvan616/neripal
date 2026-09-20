@@ -19,7 +19,11 @@ void setup() {
 
 void loop() {
     while (const auto action = platform.pollAction()) {
-        ui.handleInput(*action);
+        ui.handleInput(*action, pet.state());
+    }
+    if (const auto care = ui.takeCareAction()) {
+        const auto result = pet.apply(*care);
+        ui.beginCareFeedback(*care, result, clockSource.nowMillis());
     }
     pet.update();
     ui.update(clockSource.nowMillis());

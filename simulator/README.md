@@ -39,6 +39,7 @@ El panel lateral de debug muestra las herramientas y conserva estos atajos:
 |---|---|
 | `F`, `T` | Feed, train |
 | `S`, `W` | Alternar sueño, despertar |
+| `L` | Clean |
 | `R` | Reset completo del Pet |
 | `1` a `4` | Velocidad x1, x10, x100, x1000 |
 | `A` | Avanzar una hora simulada |
