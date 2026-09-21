@@ -23,6 +23,12 @@ public:
     // RNG or emit events. Nap remaining 0 or above kNapDurationMaxMs wakes.
     void restoreSnapshot(PetState& state, SleepCause cause, std::uint32_t napRemainingMs);
 
+    // Pose after offline needs. No RNG and no events. Does not refresh mood
+    // memory, so the caller can emit one flank. A nap that ended sets the
+    // same re-entry guard as a live nap finish.
+    void presentOffline(PetState& state, SleepCause cause, std::uint32_t napRemainingMs,
+                        bool napEnded);
+
     bool frozenBySleep(const PetState& state) const noexcept;
     SleepCause sleepCause() const noexcept { return sleepCause_; }
     std::uint32_t napRemainingMs(const PetState& state) const noexcept;

@@ -63,5 +63,15 @@ inline constexpr int kNapWakeEnergy = 40;
 inline constexpr std::uint32_t kNapDurationMinMs = 8000;
 inline constexpr std::uint32_t kNapDurationMaxMs = 20000;
 
+// Defensive sanity cap for a bad wall clock. Not a gameplay rule: 0.6 may
+// change it without touching needs catch-up.
+inline constexpr std::uint64_t kMaxAgeOfflineMs = 365ull * 24 * 60 * 60 * 1000;
+// Needs hit a fixed point within a few hundred minutes. The cap only bounds
+// how much of a gap is fed into that catch-up.
+inline constexpr std::uint64_t kMaxNeedsOfflineMs = 30ull * 24 * 60 * 60 * 1000;
+// Steps of one stable phase (awake, or player sleep) after which further
+// steps do not change stats. Nap is resolved before this cap applies.
+inline constexpr std::uint32_t kNeedsSettleSteps = 400;
+
 }  // namespace neripal::core::balance
 

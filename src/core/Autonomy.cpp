@@ -85,6 +85,39 @@ void Autonomy::restoreSnapshot(PetState& state, SleepCause cause, std::uint32_t 
     previousMoodValid_ = true;
 }
 
+void Autonomy::presentOffline(PetState& state, SleepCause cause, std::uint32_t napRemainingMs,
+                               bool napEnded) {
+    remainderMs_ = 0;
+    lastWasWalk_ = false;
+    walkStartX_ = balance::kPetHomeX;
+    walkTotalPx_ = 0;
+    state.x = balance::kPetHomeX;
+    state.facing = balance::kDefaultFacing;
+
+    if (cause == SleepCause::Nap && napRemainingMs > 0 &&
+        napRemainingMs <= balance::kNapDurationMaxMs) {
+        skipNextNap_ = false;
+        sleepCause_ = SleepCause::Nap;
+        state.sleeping = true;
+        beginTimed(state, Activity::Nap, napRemainingMs);
+        return;
+    }
+
+    if (cause == SleepCause::Player) {
+        sleepCause_ = SleepCause::Player;
+        state.sleeping = true;
+        applySleepPose(state);
+        return;
+    }
+
+    if (napEnded) {
+        skipNextNap_ = true;
+    }
+    sleepCause_ = SleepCause::None;
+    state.sleeping = false;
+    beginIdle(state, nullptr);
+}
+
 std::uint32_t Autonomy::napRemainingMs(const PetState& state) const noexcept {
     if (sleepCause_ != SleepCause::Nap) {
         return 0;

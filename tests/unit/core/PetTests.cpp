@@ -1341,8 +1341,8 @@ bool restoreSnapshotClearsQueuedEvents() {
     return !pet.pollEvent(event);
 }
 
-// Live contract for restored Nap: energy at kNapWakeEnergy ends the nap before
-// napRemainingMs elapses. 0.5-B applyOffline must apply the same split.
+// Live contract: energy already at kNapWakeEnergy ends the nap on the next
+// tick even if napRemainingMs is still full. applyOffline uses the same rule.
 bool restoredNapEndsWhenEnergyAtWakeThreshold() {
     namespace B = neripal::core::balance;
     FakeClock clock;
@@ -1360,6 +1360,268 @@ bool restoredNapEndsWhenEnergyAtWakeThreshold() {
     pet.update();
     return !pet.state().sleeping && pet.state().activity == Activity::Idle &&
            pet.capture().sleepCause == SleepCause::None && rng.remaining() == 0;
+}
+
+constexpr std::uint64_t kDayMs = 24ull * 60 * 60 * 1000;
+
+bool sameNeeds(const PetSnapshot& a, const PetSnapshot& b) {
+    return a.hunger == b.hunger && a.happiness == b.happiness && a.energy == b.energy &&
+           a.health == b.health && a.hygiene == b.hygiene &&
+           a.needsRemainderMs == b.needsRemainderMs;
+}
+
+int drainEvents(Pet& pet) {
+    int count = 0;
+    GameEvent event{};
+    while (pet.pollEvent(event)) {
+        ++count;
+    }
+    return count;
+}
+
+bool offlineZeroDoesNotChangeNeeds() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const auto before = pet.capture();
+    pet.applyOffline(0, 0);
+    const auto after = pet.capture();
+    return after.ageMillis == before.ageMillis && sameNeeds(before, after) &&
+           after.sleepCause == SleepCause::None && pet.state().activity == Activity::Idle;
+}
+
+bool offlineThirtySecondsKeepsRemainder() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const int hunger = pet.state().hunger;
+    pet.applyOffline(30'000, 30'000);
+    const auto snap = pet.capture();
+    return snap.ageMillis == 30'000 && snap.needsRemainderMs == 30'000 && snap.hunger == hunger &&
+           drainEvents(pet) <= 1;
+}
+
+bool offlineNinetySecondsAppliesOneNeedStep() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const int hunger = pet.state().hunger;
+    pet.applyOffline(90'000, 90'000);
+    const auto snap = pet.capture();
+    pet.update();
+    return snap.ageMillis == 90'000 && snap.needsRemainderMs == 30'000 &&
+           snap.hunger == hunger + 1 && pet.capture().ageMillis == 90'000;
+}
+
+bool offlineUsesExistingRemainder() {
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    clock.advance(40'000);
+    pet.update();
+    const int hunger = pet.state().hunger;
+    pet.applyOffline(30'000, 30'000);
+    const auto snap = pet.capture();
+    return snap.ageMillis == 70'000 && snap.needsRemainderMs == 10'000 && snap.hunger == hunger + 1;
+}
+
+bool offlinePlayerSleepStaysAsleep() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    if (pet.sleep() != CareResult::Applied) return false;
+    const int hygiene = pet.state().hygiene;
+    const int energy = pet.state().energy;
+    pet.applyOffline(120'000, 120'000);
+    const auto snap = pet.capture();
+    return snap.sleepCause == SleepCause::Player && pet.state().sleeping &&
+           pet.state().activity == Activity::Sleep && snap.hygiene == hygiene &&
+           snap.energy == energy + 4 && snap.napRemainingMs == 0 &&
+           pet.wake() == CareResult::Applied;
+}
+
+bool offlineNapContinues() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 15'000;
+    snap.energy = B::kAutonomousNapEnergy;
+    pet.restoreSnapshot(snap);
+    pet.applyOffline(4'000, 4'000);
+    const auto after = pet.capture();
+    return after.sleepCause == SleepCause::Nap && after.napRemainingMs == 11'000 &&
+           pet.state().activity == Activity::Nap && pet.state().sleeping &&
+           after.energy == B::kAutonomousNapEnergy && rng.remaining() == 0;
+}
+
+bool offlineNapEndsByTimeThenAwake() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 10'000;
+    snap.energy = 80;
+    snap.hygiene = 80;
+    snap.needsRemainderMs = 0;
+    pet.restoreSnapshot(snap);
+    pet.applyOffline(70'000, 70'000);
+    const auto after = pet.capture();
+    return after.sleepCause == SleepCause::None && !pet.state().sleeping &&
+           pet.state().activity == Activity::Idle && pet.state().x == neripal::core::balance::kPetHomeX &&
+           after.energy == 79 && after.hygiene == 79 && after.needsRemainderMs == 10'000 &&
+           rng.remaining() == 0;
+}
+
+bool offlineNapEndsEarlyWhenEnergyReachesWake() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 20'000;
+    snap.energy = B::kNapWakeEnergy;
+    snap.hygiene = 80;
+    snap.needsRemainderMs = 50'000;
+    pet.restoreSnapshot(snap);
+    pet.applyOffline(20'000, 20'000);
+    const auto after = pet.capture();
+    return after.sleepCause == SleepCause::None && pet.state().activity == Activity::Idle &&
+           after.energy == B::kNapWakeEnergy - 1 && after.hygiene == 79 &&
+           after.napRemainingMs == 0 && rng.remaining() == 0;
+}
+
+bool offlineFortyFiveDaysCapsNeedsOnly() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom fastRng;
+    FakeRandom cappedRng;
+    Pet fast(clock, fastRng);
+    Pet capped(clock, cappedRng);
+    fast.applyOffline(45ull * kDayMs, 45ull * kDayMs + 30'000);
+    capped.applyOffline(0, B::kMaxNeedsOfflineMs);
+    return fast.capture().ageMillis == 45ull * kDayMs &&
+           fast.capture().needsRemainderMs == 0 && sameNeeds(fast.capture(), capped.capture());
+}
+
+bool offlineFourHundredDaysCapsAgeAndNeeds() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom fastRng;
+    FakeRandom cappedRng;
+    Pet fast(clock, fastRng);
+    Pet capped(clock, cappedRng);
+    fast.applyOffline(400ull * kDayMs, 400ull * kDayMs + 30'000);
+    capped.applyOffline(0, B::kMaxNeedsOfflineMs);
+    return fast.capture().ageMillis == B::kMaxAgeOfflineMs &&
+           fast.capture().needsRemainderMs == 0 && sameNeeds(fast.capture(), capped.capture());
+}
+
+bool offlineDoesNotConsumeRngOrWalk() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng({0u, 0u, 0u, 7u, 8u, 9u});
+    Pet pet(clock, rng);
+    clock.advance(B::kIdleDurationMinMs + B::kWalkMsPerPixel * 4);
+    pet.update();
+    if (pet.state().activity != Activity::Walk || pet.state().x == B::kPetHomeX) return false;
+    const auto left = rng.remaining();
+    pet.applyOffline(2ull * 60 * 60 * 1000, 2ull * 60 * 60 * 1000);
+    return rng.remaining() == left && pet.state().activity != Activity::Walk &&
+           pet.state().x == B::kPetHomeX && drainEvents(pet) <= 1;
+}
+
+bool offlineSettleMatchesMinuteOracle() {
+    FakeClock clock;
+    FakeRandom fastRng;
+    FakeRandom slowRng;
+    PetSnapshot snap;
+    snap.hunger = 0;
+    snap.happiness = 100;
+    snap.energy = 100;
+    snap.health = 100;
+    snap.hygiene = 100;
+    snap.needsRemainderMs = 12'345;
+    snap.sleepCause = SleepCause::None;
+
+    Pet fast(clock, fastRng);
+    fast.restoreSnapshot(snap);
+    fast.applyOffline(0, 30ull * kDayMs);
+
+    Pet slow(clock, slowRng);
+    slow.restoreSnapshot(snap);
+    const std::uint64_t minutes = 30ull * 24 * 60;
+    for (std::uint64_t i = 0; i < minutes; ++i) {
+        slow.applyOffline(0, 60'000);
+    }
+    return sameNeeds(fast.capture(), slow.capture()) &&
+           fast.capture().sleepCause == slow.capture().sleepCause &&
+           fast.state().activity == Activity::Idle && fastRng.remaining() == 0 &&
+           slowRng.remaining() == 0;
+}
+
+bool offlinePlayerSleepSettleMatchesMinuteOracle() {
+    FakeClock clock;
+    FakeRandom fastRng;
+    FakeRandom slowRng;
+    PetSnapshot snap;
+    snap.hunger = 0;
+    snap.happiness = 100;
+    snap.energy = 0;
+    snap.health = 100;
+    snap.hygiene = 80;
+    snap.needsRemainderMs = 1'000;
+    snap.sleepCause = SleepCause::Player;
+
+    Pet fast(clock, fastRng);
+    fast.restoreSnapshot(snap);
+    fast.applyOffline(0, 1'000ull * 60'000);
+
+    Pet slow(clock, slowRng);
+    slow.restoreSnapshot(snap);
+    for (int i = 0; i < 1000; ++i) {
+        slow.applyOffline(0, 60'000);
+    }
+    return sameNeeds(fast.capture(), slow.capture()) &&
+           fast.capture().sleepCause == SleepCause::Player &&
+           slow.capture().sleepCause == SleepCause::Player &&
+           fast.state().activity == Activity::Sleep;
+}
+
+bool offlineNapSplitSettleMatchesMinuteOracle() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom fastRng;
+    FakeRandom slowRng;
+    PetSnapshot snap;
+    snap.hunger = 10;
+    snap.happiness = 90;
+    snap.energy = 38;
+    snap.health = 100;
+    snap.hygiene = 90;
+    snap.needsRemainderMs = 50'000;
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 15'000;
+
+    const std::uint64_t elapsed = 800ull * 60'000;
+    Pet fast(clock, fastRng);
+    fast.restoreSnapshot(snap);
+    fast.applyOffline(0, elapsed);
+
+    Pet slow(clock, slowRng);
+    slow.restoreSnapshot(snap);
+    for (int i = 0; i < 800; ++i) {
+        slow.applyOffline(0, 60'000);
+    }
+    return sameNeeds(fast.capture(), slow.capture()) &&
+           fast.capture().sleepCause == SleepCause::None &&
+           slow.capture().sleepCause == SleepCause::None &&
+           fast.state().activity == Activity::Idle &&
+           fast.state().energy < B::kNapWakeEnergy + 2;
 }
 
 }  // namespace
@@ -1453,6 +1715,20 @@ int main() {
         {"restore snapshot does not consume rng", restoreSnapshotDoesNotConsumeRng},
         {"restore snapshot clears queued events", restoreSnapshotClearsQueuedEvents},
         {"restored nap ends when energy at wake threshold", restoredNapEndsWhenEnergyAtWakeThreshold},
+        {"offline zero does not change needs", offlineZeroDoesNotChangeNeeds},
+        {"offline thirty seconds keeps remainder", offlineThirtySecondsKeepsRemainder},
+        {"offline ninety seconds applies one need step", offlineNinetySecondsAppliesOneNeedStep},
+        {"offline uses existing remainder", offlineUsesExistingRemainder},
+        {"offline player sleep stays asleep", offlinePlayerSleepStaysAsleep},
+        {"offline nap continues", offlineNapContinues},
+        {"offline nap ends by time then awake", offlineNapEndsByTimeThenAwake},
+        {"offline nap ends early when energy reaches wake", offlineNapEndsEarlyWhenEnergyReachesWake},
+        {"offline forty five days caps needs only", offlineFortyFiveDaysCapsNeedsOnly},
+        {"offline four hundred days caps age and needs", offlineFourHundredDaysCapsAgeAndNeeds},
+        {"offline does not consume rng or walk", offlineDoesNotConsumeRngOrWalk},
+        {"offline settle matches minute oracle", offlineSettleMatchesMinuteOracle},
+        {"offline player sleep settle matches minute oracle", offlinePlayerSleepSettleMatchesMinuteOracle},
+        {"offline nap split settle matches minute oracle", offlineNapSplitSettleMatchesMinuteOracle},
     };
 
     int failures = 0;

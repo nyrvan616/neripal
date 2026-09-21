@@ -21,8 +21,8 @@ struct PetSnapshot {
     std::uint32_t napRemainingMs = 0;
 };
 
-// Offline (0.5-B): if energy reaches kNapWakeEnergy before napRemainingMs elapses,
-// Nap ends and the leftover interval is processed awake. Live restore+update already
-// enforces that contract.
+// If energy reaches kNapWakeEnergy before napRemainingMs elapses, Nap ends and
+// the leftover offline interval uses awake need rules. applyOffline does this
+// without starting another nap.
 
 }  // namespace neripal::core

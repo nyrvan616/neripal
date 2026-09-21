@@ -39,6 +39,12 @@ public:
     PetSnapshot capture() const;
     void restoreSnapshot(const PetSnapshot& snapshot);
 
+    // Advance age and needs across a powered-off gap. Does not read IClock for
+    // the gap, does not run Autonomy, and does not consume IRandom.
+    // Age is capped by kMaxAgeOfflineMs (defensive, not a gameplay rule).
+    // Needs are capped by kMaxNeedsOfflineMs.
+    void applyOffline(std::uint64_t ageElapsedMs, std::uint64_t needsElapsedMs);
+
 private:
     static int clampStat(int value) noexcept;
     void applyNeedsStep();
