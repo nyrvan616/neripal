@@ -6,16 +6,11 @@
 #include "neripal/core/IRandom.hpp"
 #include "neripal/core/Mood.hpp"
 #include "neripal/core/PetState.hpp"
+#include "neripal/core/SleepCause.hpp"
 
 #include <cstdint>
 
 namespace neripal::core {
-
-enum class SleepCause : std::uint8_t {
-    None,
-    Player,
-    Nap,
-};
 
 // Single active activity: Idle/Walk selection, care reactions, mood one-shots, Nap.
 class Autonomy {
@@ -24,8 +19,13 @@ public:
     // Does not consume RNG or emit events. Clears leftover catch-up and edge memory.
     void reset(PetState& state);
 
+    // Restore sleep cause and pose from persisted domain state. Does not consume
+    // RNG or emit events. Nap remaining 0 or above kNapDurationMaxMs wakes.
+    void restoreSnapshot(PetState& state, SleepCause cause, std::uint32_t napRemainingMs);
+
     bool frozenBySleep(const PetState& state) const noexcept;
     SleepCause sleepCause() const noexcept { return sleepCause_; }
+    std::uint32_t napRemainingMs(const PetState& state) const noexcept;
 
     void enterSleep(PetState& state, GameEventQueue& events);
     void enterIdle(PetState& state, GameEventQueue& events);

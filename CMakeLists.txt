@@ -12,6 +12,13 @@ add_library(neripal_core STATIC
 )
 target_include_directories(neripal_core PUBLIC include)
 
+add_library(neripal_persist STATIC
+    src/persist/Crc32.cpp
+    src/persist/SaveCodec.cpp
+)
+target_include_directories(neripal_persist PUBLIC include)
+target_link_libraries(neripal_persist PUBLIC neripal_core)
+
 add_library(neripal_ui STATIC
     src/ui/PetView.cpp
     src/ui/UiController.cpp
@@ -21,9 +28,11 @@ target_link_libraries(neripal_ui PUBLIC neripal_core)
 
 if(MSVC)
     target_compile_options(neripal_core PRIVATE /W4 /permissive-)
+    target_compile_options(neripal_persist PRIVATE /W4 /permissive-)
     target_compile_options(neripal_ui PRIVATE /W4 /permissive-)
 else()
     target_compile_options(neripal_core PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(neripal_persist PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(neripal_ui PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
@@ -60,4 +69,13 @@ if(BUILD_TESTING)
         target_link_options(neripal_ui_tests PRIVATE -static -static-libgcc -static-libstdc++)
     endif()
     add_test(NAME ui.unit COMMAND neripal_ui_tests)
+
+    add_executable(neripal_persist_tests tests/unit/persist/PersistTests.cpp)
+    target_include_directories(neripal_persist_tests PRIVATE include tests/unit/core)
+    target_link_libraries(neripal_persist_tests PRIVATE neripal_persist)
+    if(NOT MSVC)
+        target_compile_options(neripal_persist_tests PRIVATE -Wall -Wextra -Wpedantic)
+        target_link_options(neripal_persist_tests PRIVATE -static -static-libgcc -static-libstdc++)
+    endif()
+    add_test(NAME persist.unit COMMAND neripal_persist_tests)
 endif()

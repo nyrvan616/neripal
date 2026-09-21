@@ -7,6 +7,8 @@
 #include "neripal/core/GameEvent.hpp"
 #include "neripal/core/Mood.hpp"
 #include "neripal/core/Pet.hpp"
+#include "neripal/core/PetSnapshot.hpp"
+#include "neripal/core/SleepCause.hpp"
 #include "neripal/core/XorShift32.hpp"
 
 #include <cstddef>
@@ -27,7 +29,9 @@ using neripal::core::GameEventKind;
 using neripal::core::GameEventQueue;
 using neripal::core::IdleVariant;
 using neripal::core::Pet;
+using neripal::core::PetSnapshot;
 using neripal::core::PetState;
+using neripal::core::SleepCause;
 using neripal::core::XorShift32;
 
 struct TestCase { std::string_view name; std::function<bool()> run; };
@@ -1227,7 +1231,138 @@ bool happyIdleUsesBouncePool() {
     pet.update();
     return pet.state().idleVariant == IdleVariant::Bounce;
 }
+
+bool captureRestorePlayerSleep() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    if (pet.sleep() != CareResult::Applied) return false;
+    const auto snap = pet.capture();
+    if (snap.sleepCause != SleepCause::Player || snap.napRemainingMs != 0) return false;
+    pet.reset();
+    pet.restoreSnapshot(snap);
+    return pet.state().sleeping && pet.state().activity == Activity::Sleep &&
+           pet.capture().sleepCause == SleepCause::Player &&
+           pet.state().activityDurationMs == 0;
 }
+
+bool captureRestoreNapKeepsRemaining() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 12'000;
+    snap.energy = B::kAutonomousNapEnergy;
+    pet.restoreSnapshot(snap);
+    const auto again = pet.capture();
+    return pet.state().sleeping && pet.state().activity == Activity::Nap &&
+           again.sleepCause == SleepCause::Nap && again.napRemainingMs == 12'000 &&
+           pet.state().activityDurationMs == 12'000 && pet.state().activityElapsedMs == 0;
+}
+
+bool captureDoesNotPersistWalkPose() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetState walk = pet.state();
+    walk.activity = Activity::Walk;
+    walk.x = 40;
+    walk.facing = -1;
+    pet.restore(walk);
+    const auto snap = pet.capture();
+    pet.restoreSnapshot(snap);
+    return snap.sleepCause == SleepCause::None && snap.napRemainingMs == 0 &&
+           pet.state().x == B::kPetHomeX && pet.state().activity == Activity::Idle &&
+           pet.state().facing == B::kDefaultFacing;
+}
+
+bool restoreSnapshotPreservesNeedsRemainder() {
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    clock.advance(30'000);
+    pet.update();
+    const auto snap = pet.capture();
+    if (snap.needsRemainderMs != 30'000) return false;
+    pet.reset();
+    pet.restoreSnapshot(snap);
+    return pet.capture().needsRemainderMs == 30'000;
+}
+
+bool restoreSnapshotZeroNapRemainingWakes() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 0;
+    pet.restoreSnapshot(snap);
+    return !pet.state().sleeping && pet.capture().sleepCause == SleepCause::None &&
+           pet.state().activity == Activity::Idle;
+}
+
+bool restoreSnapshotOversizedNapWakes() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = B::kNapDurationMaxMs + 1;
+    pet.restoreSnapshot(snap);
+    return !pet.state().sleeping && pet.capture().sleepCause == SleepCause::None;
+}
+
+bool restoreSnapshotDoesNotConsumeRng() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 8'000;
+    pet.restoreSnapshot(snap);
+    return rng.remaining() == 0;
+}
+
+bool restoreSnapshotClearsQueuedEvents() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    pet.sleep();
+    GameEvent event{};
+    if (!pet.pollEvent(event)) return false;
+    const auto snap = pet.capture();
+    pet.wake();
+    if (!pet.pollEvent(event)) return false;
+    pet.restoreSnapshot(snap);
+    return !pet.pollEvent(event);
+}
+
+// Live contract for restored Nap: energy at kNapWakeEnergy ends the nap before
+// napRemainingMs elapses. 0.5-B applyOffline must apply the same split.
+bool restoredNapEndsWhenEnergyAtWakeThreshold() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng({kSkipWalk, 0u, 0u});
+    Pet pet(clock, rng);
+    PetSnapshot snap = pet.capture();
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = B::kNapDurationMaxMs;
+    snap.energy = B::kNapWakeEnergy;
+    pet.restoreSnapshot(snap);
+    if (pet.state().activity != Activity::Nap || pet.capture().napRemainingMs != B::kNapDurationMaxMs) {
+        return false;
+    }
+    clock.advance(1);
+    pet.update();
+    return !pet.state().sleeping && pet.state().activity == Activity::Idle &&
+           pet.capture().sleepCause == SleepCause::None && rng.remaining() == 0;
+}
+
+}  // namespace
 
 int main() {
     const std::vector<TestCase> tests{
@@ -1309,6 +1444,15 @@ int main() {
         {"player sleep blocks nap and walk", playerSleepBlocksNapAndWalk},
         {"player wake ends nap", playerWakeEndsNap},
         {"happy idle uses bounce pool", happyIdleUsesBouncePool},
+        {"capture restore player sleep", captureRestorePlayerSleep},
+        {"capture restore nap keeps remaining", captureRestoreNapKeepsRemaining},
+        {"capture does not persist walk pose", captureDoesNotPersistWalkPose},
+        {"restore snapshot preserves needs remainder", restoreSnapshotPreservesNeedsRemainder},
+        {"restore snapshot zero nap remaining wakes", restoreSnapshotZeroNapRemainingWakes},
+        {"restore snapshot oversized nap wakes", restoreSnapshotOversizedNapWakes},
+        {"restore snapshot does not consume rng", restoreSnapshotDoesNotConsumeRng},
+        {"restore snapshot clears queued events", restoreSnapshotClearsQueuedEvents},
+        {"restored nap ends when energy at wake threshold", restoredNapEndsWhenEnergyAtWakeThreshold},
     };
 
     int failures = 0;

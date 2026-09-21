@@ -159,4 +159,40 @@ void Pet::restore(const PetState& state) {
     anchorClock();
 }
 
+PetSnapshot Pet::capture() const {
+    PetSnapshot snapshot;
+    snapshot.hunger = state_.hunger;
+    snapshot.happiness = state_.happiness;
+    snapshot.energy = state_.energy;
+    snapshot.health = state_.health;
+    snapshot.hygiene = state_.hygiene;
+    snapshot.ageMillis = state_.ageMillis;
+    snapshot.needsRemainderMs = needsRemainderMs_ > 0xFFFFFFFFull
+                                    ? 0xFFFFFFFFu
+                                    : static_cast<std::uint32_t>(needsRemainderMs_);
+    snapshot.stage = state_.stage;
+    snapshot.sleepCause = autonomy_.sleepCause();
+    snapshot.napRemainingMs = autonomy_.napRemainingMs(state_);
+    return snapshot;
+}
+
+void Pet::restoreSnapshot(const PetSnapshot& snapshot) {
+    state_ = PetState{};
+    state_.hunger = clampStat(snapshot.hunger);
+    state_.happiness = clampStat(snapshot.happiness);
+    state_.energy = clampStat(snapshot.energy);
+    state_.health = clampStat(snapshot.health);
+    state_.hygiene = clampStat(snapshot.hygiene);
+    state_.ageMillis = snapshot.ageMillis;
+    state_.stage = snapshot.stage;
+    updateEvolution();
+    needsRemainderMs_ = snapshot.needsRemainderMs;
+    if (needsRemainderMs_ >= balance::kNeedsStepMs) {
+        needsRemainderMs_ %= balance::kNeedsStepMs;
+    }
+    events_.clear();
+    autonomy_.restoreSnapshot(state_, snapshot.sleepCause, snapshot.napRemainingMs);
+    anchorClock();
+}
+
 }  // namespace neripal::core
