@@ -1,12 +1,14 @@
 #include "neripal/core/Pet.hpp"
 
 #include "neripal/core/Balance.hpp"
+#include "neripal/core/Care.hpp"
 
 #include <algorithm>
 
 namespace neripal::core {
 
-Pet::Pet(IClock& clock) : clock_(clock) {
+Pet::Pet(IClock& clock, IRandom& random) : clock_(clock), random_(random) {
+    autonomy_.reset(state_);
     anchorClock();
 }
 
@@ -23,29 +25,36 @@ CareResult Pet::feed() {
     state_.hunger = clampStat(state_.hunger + balance::kFeedHunger);
     state_.happiness = clampStat(state_.happiness + balance::kFeedHappiness);
     state_.hygiene = clampStat(state_.hygiene + balance::kFeedHygiene);
+    autonomy_.onCareApplied(CareAction::Feed, state_, events_);
     return CareResult::Applied;
 }
 
 CareResult Pet::train() {
     if (state_.sleeping) return CareResult::RejectedAsleep;
-    if (state_.energy < -balance::kTrainEnergy) return CareResult::RejectedNoEnergy;
+    if (state_.energy < -balance::kTrainEnergy) {
+        autonomy_.onRejectedNoEnergy(state_, events_);
+        return CareResult::RejectedNoEnergy;
+    }
     state_.energy = clampStat(state_.energy + balance::kTrainEnergy);
     state_.hunger = clampStat(state_.hunger + balance::kTrainHunger);
     state_.happiness = clampStat(state_.happiness + balance::kTrainHappiness);
     state_.health = clampStat(state_.health + balance::kTrainHealth);
     state_.hygiene = clampStat(state_.hygiene + balance::kTrainHygiene);
+    autonomy_.onCareApplied(CareAction::Train, state_, events_);
     return CareResult::Applied;
 }
 
 CareResult Pet::sleep() {
     if (state_.sleeping) return CareResult::RejectedAlreadySleeping;
     state_.sleeping = true;
+    autonomy_.enterSleep(state_, events_);
     return CareResult::Applied;
 }
 
 CareResult Pet::wake() {
     if (!state_.sleeping) return CareResult::RejectedAlreadyAwake;
     state_.sleeping = false;
+    autonomy_.enterIdle(state_, events_);
     return CareResult::Applied;
 }
 
@@ -53,6 +62,7 @@ CareResult Pet::clean() {
     if (state_.sleeping) return CareResult::RejectedAsleep;
     state_.hygiene = clampStat(state_.hygiene + balance::kCleanHygiene);
     state_.happiness = clampStat(state_.happiness + balance::kCleanHappiness);
+    autonomy_.onCareApplied(CareAction::Clean, state_, events_);
     return CareResult::Applied;
 }
 
@@ -108,6 +118,7 @@ void Pet::update() {
 
     const auto elapsed = now - lastUpdateMs_;
     lastUpdateMs_ = now;
+    const bool startedAsEgg = state_.stage == EvolutionStage::Egg;
     state_.ageMillis += elapsed;
     updateEvolution();
     needsRemainderMs_ += elapsed;
@@ -116,11 +127,21 @@ void Pet::update() {
         needsRemainderMs_ -= balance::kNeedsStepMs;
         applyNeedsStep();
     }
+
+    autonomy_.onStatsChanged(state_, events_);
+    const bool frozen = startedAsEgg || autonomy_.frozenBySleep(state_);
+    autonomy_.advance(state_, random_, events_, elapsed, frozen);
+}
+
+bool Pet::pollEvent(GameEvent& out) noexcept {
+    return events_.poll(out);
 }
 
 void Pet::reset() {
     state_ = PetState{};
     needsRemainderMs_ = 0;
+    events_.clear();
+    autonomy_.reset(state_);
     anchorClock();
 }
 
@@ -133,6 +154,8 @@ void Pet::restore(const PetState& state) {
     state_.hygiene = clampStat(state_.hygiene);
     updateEvolution();
     needsRemainderMs_ = 0;
+    events_.clear();
+    autonomy_.reset(state_);
     anchorClock();
 }
 

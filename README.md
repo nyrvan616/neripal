@@ -1,4 +1,4 @@
-# NeriPal 0.3.0
+# NeriPal 0.4.0
 
 Mascota virtual retro-moderna para Windows y la placa Waveshare
 ESP32-S3-Touch-LCD-1.54. El proyecto comparte un Game Core C++17 entre el
@@ -14,29 +14,34 @@ directorio que lo contiene ni repositorios hermanos. En esta documentación,
 
 | Área | Estado | Alcance actual |
 |---|---|---|
-| Game Core | Operativo | Hunger, happiness, energy, health, hygiene; feed/train/sleep/wake/clean; `CareResult` |
-| Simulador Windows | Operativo | Menú de cuidado 240x240, teclado de dispositivo y Debug Tools laterales |
-| UI V-Pet | Operativa | Home, menú 2x3, Status con HYG y overlays de feedback |
-| Tests | Operativos | Tests deterministas Core + UI (FakeClock y renderer falso) |
-| Build ESP32-S3 | Operativo | Firmware compilado para 16 MB flash y PSRAM octal |
+| Game Core | Operativo | Crianza 0.3 + Autonomy (Idle/Walk/Nap), `deriveMood`, `GameEvent` |
+| Simulador Windows | Operativo | Menú de cuidado 240x240, mascota que camina sola, Debug Tools laterales |
+| UI V-Pet | Operativa | Home con X/facing, Eat/Dirty/Annoyed placeholder, overlays |
+| Tests | Operativos | Core + UI deterministas (`FakeClock`, `FakeRandom`) |
+| Build ESP32-S3 | Operativo | Firmware compilable; seed RNG inyectada en el root |
 | HAL Waveshare | Base parcial | Reloj, power-hold, backlight y tres botones |
 | Display/touch/audio/IMU | Pendiente | Pinout documentado; ST7789 sigue stub |
 
-Esta versión cierra el loop de crianza básica en el dispositivo lógico. No está
+Esta versión hace que la mascota se sienta viva en el dispositivo lógico. No está
 lista para una demo visual sobre la placa física: el renderer ST7789 no dibuja.
 
-El cierre de 0.3 está en [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md). El
-diagnóstico histórico de 0.1 permanece en [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md).
+El cierre de 0.4 está en [`docs/MILESTONE_0.4.md`](docs/MILESTONE_0.4.md). El de
+0.3 permanece en [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md). El diagnóstico
+histórico de 0.1 está en [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md).
 
 ## Funcionalidad disponible
 
-- `PetState`: hunger, happiness, energy, health, hygiene, age, sleeping y stage.
+- `PetState`: stats, edad, sueño, etapa y snapshot de activity (`x`, facing, elapsed).
 - Acciones de cuidado: feed, train, sleep, wake, clean, con rechazos motivados.
+- Autonomía: Idle (variantes por mood), Walk 1D, Nap si la energía es crítica.
+- Reacciones: Eat, Happy, Tired, Dirty, Annoyed; Sleep visual con Z.
+- `deriveMood` como única fuente de ánimo; `pollEvent()` one-shot de activity.
 - Menú de dispositivo: FEED, TRAIN, SLEEP/WAKE, CLEAN, STATUS, HOME.
 - Overlays de feedback (~900 ms) según `CareResult`, dentro de 240x240.
 - Degradación temporal: hambre, energía, hygiene en vigilia, felicidad y salud.
 - Evolución mínima por edad: Egg (preview), Baby, Child y Adult.
 - Reloj desktop acelerable x1, x10, x100 y x1000.
+- RNG inyectado (`XorShift32`) desde el composition root; tests con `FakeRandom`.
 - Debug Tools fuera del viewport: stats (incl. hygiene), L=clean, sin setters en Pet.
 - Firmware con el mismo cableado de cuidado que el simulador; sin DebugController.
 - Versión visible en la cabecera del juego, consola desktop y Serial del ESP32.
@@ -45,10 +50,10 @@ diagnóstico histórico de 0.1 permanece en [`docs/STATUS_REPORT.md`](docs/STATU
 
 - Render real en ST7789 y lectura CST816T.
 - Persistencia, recuperación del tiempo apagado o versionado de saves.
-- Comportamiento autónomo (idle, sueño espontáneo, enfermedad, eventos).
+- Enfermedad completa, medicina, muerte, poop, día/noche.
 - Audio ES8311, IMU QMI8658 y medición/calibración de batería.
 - Wi-Fi gameplay, ESP-NOW, combate, multiplayer, tienda o inventario.
-- Evolución ramificada, minijuegos o aleatoriedad abstraída.
+- Evolución ramificada o minijuegos.
 - Assets visuales finales y pipeline de sprites.
 - CI, tests contractuales de HAL y validación sobre hardware físico.
 

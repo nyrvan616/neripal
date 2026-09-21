@@ -1,7 +1,9 @@
 #include "neripal/ui/PetView.hpp"
 
 #include "neripal/Version.hpp"
+#include "neripal/core/Activity.hpp"
 #include "neripal/core/Balance.hpp"
+#include "neripal/core/Mood.hpp"
 
 #include <algorithm>
 #include <array>
@@ -254,12 +256,21 @@ const char* stageLabel(core::EvolutionStage stage) {
     }
 }
 
-const char* moodLabel(const core::PetState& state) {
-    if (state.hunger > 75 || state.health < 30) return "WORRIED";
-    if (state.hygiene <= core::balance::kHygieneNeglectThreshold) return "DIRTY";
-    if (state.sleeping) return "RESTING";
-    if (state.happiness > 80) return "HAPPY";
+const char* moodLabel(core::Mood mood) {
+    switch (mood) {
+        case core::Mood::Tired: return "TIRED";
+        case core::Mood::Dirty: return "DIRTY";
+        case core::Mood::Annoyed: return "ANNOYED";
+        case core::Mood::Resting: return "RESTING";
+        case core::Mood::Happy: return "HAPPY";
+        case core::Mood::Calm: return "CALM";
+    }
     return "CALM";
+}
+
+const char* careMoodBanner(const core::PetState& state) {
+    if (state.stage == core::EvolutionStage::Egg) return "WAITING";
+    return moodLabel(core::deriveMood(state));
 }
 
 const char* rejectionLabel(core::CareResult result) {
@@ -327,30 +338,76 @@ void PetView::drawStat(platform::IRenderer& r, int y, const char* label,
 }
 
 void PetView::drawPet(platform::IRenderer& r, int x, int y, int idleFrame, int extraBob,
-                      bool sleeping, core::EvolutionStage stage) {
+                      const core::PetState& state) {
     constexpr int kPixel = 4;
-    const auto& sprite = spriteForStage(stage);
-    const int bob = sleeping ? 0 : idleFrame * 2 + extraBob;
+    constexpr int kSpriteCells = 16;
+    const auto& sprite = spriteForStage(state.stage);
+    const bool asleep = state.sleeping || state.activity == core::Activity::Sleep ||
+                        state.activity == core::Activity::Nap;
+    const core::Mood mood = core::deriveMood(state);
+
+    int frame = idleFrame;
+    int amplitude = 2;
+    if (state.activity == core::Activity::Walk) {
+        frame = static_cast<int>((state.activityElapsedMs / 250u) % 2u);
+        amplitude = 2;
+    } else if (mood == core::Mood::Tired || state.idleVariant == core::IdleVariant::Slump) {
+        amplitude = 1;
+    }
+    if (state.activity == core::Activity::Happy ||
+        state.idleVariant == core::IdleVariant::Bounce) {
+        extraBob += 2;
+    }
+    const int bob = asleep ? 0 : frame * amplitude + extraBob;
+    const bool flip = state.facing < 0;
+
     for (std::size_t row = 0; row < sprite.size(); ++row) {
         for (std::size_t column = 0; column < sprite[row].size(); ++column) {
             platform::Color color = 0;
             switch (sprite[row][column]) {
                 case 'O': color = kOutline; break;
-                case 'A': color = sleeping ? kSleep : kPetMain; break;
-                case 'B': color = sleeping ? kPurple : kPetDark; break;
-                case 'H': color = sleeping ? kPanelLight : kPetLight; break;
+                case 'A': color = asleep ? kSleep : kPetMain; break;
+                case 'B': color = asleep ? kPurple : kPetDark; break;
+                case 'H': color = asleep ? kPanelLight : kPetLight; break;
                 case 'E': color = kPanelLight; break;
                 case 'S': color = kGold; break;
                 default: continue;
             }
-            r.fillRect(x + static_cast<int>(column) * kPixel,
-                       y + static_cast<int>(row) * kPixel + bob,
-                       kPixel, kPixel, color);
+            const int cell = flip ? (kSpriteCells - 1 - static_cast<int>(column))
+                                  : static_cast<int>(column);
+            r.fillRect(x + cell * kPixel, y + static_cast<int>(row) * kPixel + bob, kPixel,
+                       kPixel, color);
         }
     }
-    if (sleeping) {
-        r.drawText(x + 66, y + 12, "Z", kPanelLight, 2);
-        r.drawText(x + 83, y + 4, "Z", kPanelLight);
+
+    if (asleep) {
+        const int z1x = std::min(x + 66, platform::IRenderer::kLogicalWidth - 12);
+        const int z2x = std::min(x + 83, platform::IRenderer::kLogicalWidth - 8);
+        r.drawText(z1x, y + 12, "Z", kPanelLight, 2);
+        r.drawText(z2x, y + 4, "Z", kPanelLight);
+    }
+
+    const bool showDirty = mood == core::Mood::Dirty || state.activity == core::Activity::Dirty ||
+                           state.idleVariant == core::IdleVariant::Shake;
+    if (showDirty && !asleep) {
+        r.fillRect(std::clamp(x + 8, 0, 236), std::clamp(y + 18 + bob, 0, 236), 4, 4, kAlert);
+        r.fillRect(std::clamp(x + 48, 0, 236), std::clamp(y + 40 + bob, 0, 236), 4, 4, kAlert);
+        r.fillRect(std::clamp(x + 28, 0, 236), std::clamp(y + 8 + bob, 0, 236), 3, 3, kEarth);
+    }
+
+    const bool showAnnoyed = mood == core::Mood::Annoyed ||
+                             state.activity == core::Activity::Annoyed ||
+                             state.idleVariant == core::IdleVariant::Fidget;
+    if (showAnnoyed && !asleep) {
+        r.fillRect(std::clamp(x + 16, 0, 236), std::clamp(y + 10 + bob, 0, 236), 8, 2, kAlert);
+        r.fillRect(std::clamp(x + 36, 0, 236), std::clamp(y + 10 + bob, 0, 236), 8, 2, kAlert);
+    }
+
+    if (state.activity == core::Activity::Eat) {
+        const int foodX = std::clamp(x + (flip ? -18 : 52), 0, 226);
+        const int foodY = std::clamp(y + 38 + bob, 0, 230);
+        r.fillRect(foodX, foodY, 14, 10, kGold);
+        r.fillRect(foodX + 3, foodY + 3, 8, 4, kHappy);
     }
 }
 
@@ -366,7 +423,8 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
              uiState.careAction == core::CareAction::Train)
                 ? 4
                 : 0;
-        drawPet(r, 88, 67, uiState.idleFrame, extraBob, state.sleeping, state.stage);
+        const int petX = std::clamp(state.x, 0, platform::IRenderer::kLogicalWidth - 64);
+        drawPet(r, petX, 67, uiState.idleFrame, extraBob, state);
         drawCareOverlay(r, uiState);
         drawPanel(r, 57, 143, 126, 29, kPanel);
         const char* banner = nullptr;
@@ -374,7 +432,7 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
             banner = rejectionLabel(uiState.careResult);
         }
         if (banner == nullptr) {
-            banner = state.stage == core::EvolutionStage::Egg ? "WAITING" : moodLabel(state);
+            banner = careMoodBanner(state);
         }
         r.drawText(73, 153, banner, kInk, 2);
         r.fillRect(0, 207, 240, 33, kOutline);
@@ -410,17 +468,17 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
         drawPanel(r, 10, 39, 220, 157, kPanel);
         r.drawText(23, 49, "VITAL SIGNS", kInk, 2);
         drawPanel(r, 19, 71, 119, 125, kPanelLight, kPurple);
-        drawStat(r, 76, "HUN", state.hunger, state.hunger > 75 ? kAlert : kHappy);
+        drawStat(r, 76, "HUN", state.hunger,
+                 state.hunger >= core::balance::kAnnoyedMoodHunger ? kAlert : kHappy);
         drawStat(r, 94, "HAP", state.happiness, kHappy);
         drawStat(r, 112, "ENG", state.energy, kEnergy);
-        drawStat(r, 130, "HP ", state.health, state.health < 30 ? kAlert : kGrass);
+        drawStat(r, 130, "HP ", state.health,
+                 state.health < core::balance::kAnnoyedMoodHealth ? kAlert : kGrass);
         drawStat(r, 148, "HYG", state.hygiene,
                  state.hygiene <= core::balance::kHygieneNeglectThreshold ? kAlert : kPetLight);
         r.drawText(150, 76, stageLabel(state.stage), kInk);
-        drawPet(r, 151, 88, uiState.idleFrame, 0, state.sleeping, state.stage);
-        r.drawText(153, 163, state.stage == core::EvolutionStage::Egg ? "WAITING"
-                                                                        : moodLabel(state),
-                   kInk);
+        drawPet(r, 151, 88, uiState.idleFrame, 0, state);
+        r.drawText(153, 163, careMoodBanner(state), kInk);
         char age[18]{};
         std::snprintf(age, sizeof(age), "AGE %llum",
                       static_cast<unsigned long long>(state.ageMillis / 60'000));

@@ -1,3 +1,5 @@
+#include "neripal/core/Activity.hpp"
+#include "neripal/core/Balance.hpp"
 #include "neripal/core/Care.hpp"
 #include "neripal/core/PetState.hpp"
 #include "neripal/platform/IRenderer.hpp"
@@ -237,6 +239,69 @@ bool rejectedFeedbackUsesCareResultLabel() {
     return false;
 }
 
+bool homeBannerUsesDerivedMood() {
+    PetState pet;
+    pet.hunger = 40;
+    pet.happiness = 70;
+    pet.energy = 80;
+    pet.health = 100;
+    pet.hygiene = 80;
+    pet.sleeping = false;
+    pet.stage = neripal::core::EvolutionStage::Baby;
+
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+
+    const auto shows = [&](const char* label) {
+        renderer = FakeRenderer{};
+        view.render(renderer, pet, ui.state());
+        for (const auto& text : renderer.texts) {
+            if (text == label) return true;
+        }
+        return false;
+    };
+
+    if (!shows("CALM")) return false;
+
+    pet.happiness = neripal::core::balance::kHappyMoodHappiness + 1;
+    if (!shows("HAPPY")) return false;
+
+    pet.happiness = 70;
+    pet.hygiene = neripal::core::balance::kHygieneNeglectThreshold;
+    if (!shows("DIRTY")) return false;
+
+    pet.hygiene = 80;
+    pet.energy = neripal::core::balance::kTiredMoodEnergy;
+    if (!shows("TIRED")) return false;
+
+    pet.energy = 80;
+    pet.happiness = neripal::core::balance::kAnnoyedMoodHappiness;
+    if (!shows("ANNOYED")) return false;
+
+    pet.happiness = 70;
+    pet.sleeping = true;
+    return shows("RESTING");
+}
+
+bool eggBannerIsWaitingRegardlessOfMood() {
+    PetState pet;
+    pet.stage = neripal::core::EvolutionStage::Egg;
+    pet.hygiene = 0;
+    pet.energy = 0;
+    pet.happiness = 0;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+    view.render(renderer, pet, ui.state());
+    bool sawWaiting = false;
+    for (const auto& text : renderer.texts) {
+        if (text == "WAITING") sawWaiting = true;
+        if (text == "DIRTY" || text == "TIRED" || text == "ANNOYED") return false;
+    }
+    return sawWaiting;
+}
+
 bool overlaysStayInsideLogicalViewport() {
     PetState pet;
     neripal::ui::PetView view;
@@ -268,6 +333,73 @@ bool overlaysStayInsideLogicalViewport() {
     }
     return true;
 }
+
+bool homePetStaysInsideViewportAtWalkBounds() {
+    using neripal::core::Activity;
+    PetState pet;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+    const int xs[] = {neripal::core::balance::kWalkMinX, neripal::core::balance::kPetHomeX,
+                      neripal::core::balance::kWalkMaxX};
+    const Activity activities[] = {Activity::Walk,   Activity::Eat,   Activity::Dirty,
+                                   Activity::Sleep,  Activity::Nap,   Activity::Annoyed,
+                                   Activity::Tired,  Activity::Happy};
+    for (int x : xs) {
+        for (int facing : {-1, 1}) {
+            for (const auto activity : activities) {
+                pet.x = x;
+                pet.facing = facing;
+                pet.activity = activity;
+                pet.sleeping = activity == Activity::Sleep || activity == Activity::Nap;
+                renderer = FakeRenderer{};
+                view.render(renderer, pet, ui.state());
+                for (const auto& rect : renderer.rectangles) {
+                    if (rect.x < 0 || rect.y < 0 || rect.width < 0 || rect.height < 0 ||
+                        rect.x + rect.width > FakeRenderer::kLogicalWidth ||
+                        rect.y + rect.height > FakeRenderer::kLogicalHeight) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+bool eatActivityDrawsFoodWithoutCareOverlay() {
+    using neripal::core::Activity;
+    PetState pet;
+    pet.activity = Activity::Eat;
+    pet.x = neripal::core::balance::kPetHomeX;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+    view.render(renderer, pet, ui.state());
+    FakeRenderer idle;
+    PetState calm = pet;
+    calm.activity = Activity::Idle;
+    view.render(idle, calm, ui.state());
+    return renderer.rectangles.size() > idle.rectangles.size();
+}
+
+bool dirtyActivityDrawsSpecks() {
+    using neripal::core::Activity;
+    PetState pet;
+    pet.activity = Activity::Dirty;
+    pet.hygiene = 0;
+    pet.x = neripal::core::balance::kPetHomeX;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+    view.render(renderer, pet, ui.state());
+    FakeRenderer clean;
+    PetState calm = pet;
+    calm.activity = Activity::Idle;
+    calm.hygiene = 80;
+    view.render(clean, calm, ui.state());
+    return renderer.rectangles.size() > clean.rectangles.size();
+}
 }
 
 int main() {
@@ -284,7 +416,12 @@ int main() {
         {"device views contain no debug labels", deviceViewsContainNoDebugLabels},
         {"care feedback appears and expires", careFeedbackAppearsAndExpires},
         {"rejected feedback uses care result label", rejectedFeedbackUsesCareResultLabel},
+        {"home banner uses derived mood", homeBannerUsesDerivedMood},
+        {"egg banner is waiting regardless of mood", eggBannerIsWaitingRegardlessOfMood},
         {"overlays stay inside logical viewport", overlaysStayInsideLogicalViewport},
+        {"home pet stays inside viewport at walk bounds", homePetStaysInsideViewportAtWalkBounds},
+        {"eat activity draws food without care overlay", eatActivityDrawsFoodWithoutCareOverlay},
+        {"dirty activity draws specks", dirtyActivityDrawsSpecks},
     };
 
     int failures = 0;
