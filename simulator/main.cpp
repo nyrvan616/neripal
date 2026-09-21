@@ -1,6 +1,7 @@
 #include "DebugController.hpp"
 #include "neripal/Version.hpp"
 #include "neripal/core/Pet.hpp"
+#include "neripal/core/XorShift32.hpp"
 #include "neripal/ui/PetView.hpp"
 #include "neripal/ui/UiController.hpp"
 #include "platform/desktop/DesktopPlatform.hpp"
@@ -9,8 +10,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#include <iostream>
 #include <array>
+#include <cstdint>
+#include <iostream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,7 +29,10 @@ int main(int argc, char* argv[]) {
 
     HINSTANCE instance = GetModuleHandleW(nullptr);
     neripal::desktop::ScaledClock clock;
-    neripal::core::Pet pet(clock);
+    // Development default chosen by this composition root, not by Core.
+    constexpr std::uint32_t kSimulatorRngSeed = 0x4E455249u;  // 'NERI'
+    neripal::core::XorShift32 rng(kSimulatorRngSeed);
+    neripal::core::Pet pet(clock, rng);
     neripal::desktop::DesktopPlatform platform(instance);
     neripal::simulator::DebugController debug(pet, clock);
     neripal::ui::PetView view;

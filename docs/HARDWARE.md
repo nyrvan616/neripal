@@ -2,7 +2,7 @@
 
 ## Target
 
-El firmware 0.3.0 apunta a Waveshare ESP32-S3-Touch-LCD-1.54 mediante el entorno
+El firmware 0.4.0 apunta a Waveshare ESP32-S3-Touch-LCD-1.54 mediante el entorno
 PlatformIO `waveshare_s3_154`. La configuración usa Arduino, C++17, flash de 16 MB,
 PSRAM octal y la tabla local `partitions_16mb.csv`.
 
@@ -34,7 +34,7 @@ flash y PSRAM debe confirmarse sobre la placa física durante el arranque.
 | Audio DIN | GPIO11 |
 | SD-MMC CLK/CMD/D0/D1/D2/D3 | GPIO16/15/17/18/13/14 |
 
-## Estado en 0.3.0
+## Estado en 0.4.0
 
 La HAL habilita power-hold, backlight y tres botones, ofrece reloj monotónico y
 acepta las primitivas de `IRenderer`. Los botones representan siguiente, confirmar

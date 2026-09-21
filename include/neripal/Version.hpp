@@ -4,10 +4,10 @@
 
 namespace neripal::version {
 
-#define NERIPAL_VERSION_TEXT "0.3.0"
+#define NERIPAL_VERSION_TEXT "0.4.0"
 
 inline constexpr int kMajor = 0;
-inline constexpr int kMinor = 3;
+inline constexpr int kMinor = 4;
 inline constexpr int kPatch = 0;
 inline constexpr std::string_view kString = NERIPAL_VERSION_TEXT;
 inline constexpr std::string_view kDisplayName = "NeriPal " NERIPAL_VERSION_TEXT;

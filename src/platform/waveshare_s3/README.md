@@ -1,6 +1,6 @@
 # WaveshareS3Platform
 
-Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.3.0.
+Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.4.0.
 
 ## Implementado
 
@@ -10,6 +10,9 @@ Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.3.0.
 - Mapeo provisional V-Pet: botón 1 siguiente, botón 2 confirmar y botón 3 volver.
 - Identificación de versión por Serial; `PetView` muestra la misma versión en UI.
 - Contratos `IInput` e `IRenderer` completos a nivel de compilación.
+- `XorShift32` inyectado en el composition root con un placeholder de seed
+  (`kFirmwareRngSeedPlaceholder`). No es política de producto ni el valor `1`;
+  ADC / `esp_random` / NVS quedan para HAL/persistencia.
 - Target PlatformIO N16R8: flash de 16 MB, PSRAM octal y particiones OTA.
 
 ## Stub deliberado
