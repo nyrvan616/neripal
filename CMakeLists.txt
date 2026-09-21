@@ -15,6 +15,7 @@ target_include_directories(neripal_core PUBLIC include)
 add_library(neripal_persist STATIC
     src/persist/Crc32.cpp
     src/persist/SaveCodec.cpp
+    src/persist/SaveSession.cpp
 )
 target_include_directories(neripal_persist PUBLIC include)
 target_link_libraries(neripal_persist PUBLIC neripal_core)
@@ -71,7 +72,7 @@ if(BUILD_TESTING)
     add_test(NAME ui.unit COMMAND neripal_ui_tests)
 
     add_executable(neripal_persist_tests tests/unit/persist/PersistTests.cpp)
-    target_include_directories(neripal_persist_tests PRIVATE include tests/unit/core)
+    target_include_directories(neripal_persist_tests PRIVATE include tests/unit/core tests/unit/persist)
     target_link_libraries(neripal_persist_tests PRIVATE neripal_persist)
     if(NOT MSVC)
         target_compile_options(neripal_persist_tests PRIVATE -Wall -Wextra -Wpedantic)
