@@ -8,6 +8,8 @@
 
 namespace neripal::waveshare_s3 {
 
+// Unscaled monotonic clock from esp_timer. Pet (gameplay) and SaveSession (autosave)
+// use separate instances; neither is a wall-clock and neither is scaled.
 class Esp32Clock final : public core::IClock {
 public:
     std::uint64_t nowMillis() const override;
