@@ -26,6 +26,7 @@ public:
 
     BootResult boot();
     void noteCareResult(core::CareResult result);
+    void markDirty();
     void tick();
     bool saveNow();
 

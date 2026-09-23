@@ -6,17 +6,23 @@
 #include "neripal/persist/SaveSession.hpp"
 
 #include "neripal/core/XorShift32.hpp"
+#include "platform/desktop/FileSaveStorage.hpp"
+#include "platform/desktop/SystemWallClock.hpp"
 
 #include "FakeClock.hpp"
 #include "FakeRandom.hpp"
 #include "FakeSaveStorage.hpp"
 #include "FakeWallClock.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -456,6 +462,86 @@ bool sessionGameplayClockDoesNotAccelerateAutosave() {
     return env.store.totalWrites() == writes + 1;
 }
 
+std::filesystem::path makeTempSaveDir() {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    auto dir = std::filesystem::temp_directory_path() / "neripal-save-test" / std::to_string(stamp);
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+
+bool fileStorageWritesViaTempAndReplace() {
+    const auto dir = makeTempSaveDir();
+    neripal::desktop::FileSaveStorage storage(dir);
+    SaveBytes bytes{};
+    bytes.size = neripal::persist::kSaveV1BlobBytes;
+    bytes.data[0] = 0xAB;
+    bytes.data[1] = 0xCD;
+    if (storage.writeSlot(0, bytes) != StorageStatus::Ok) return false;
+    if (std::filesystem::exists(dir / "neripal-slot0.bin.tmp")) return false;
+    SaveBytes read{};
+    if (storage.readSlot(0, read) != StorageStatus::Ok) return false;
+    if (read.size != bytes.size || read.data[0] != 0xAB || read.data[1] != 0xCD) return false;
+    if (storage.readSlot(1, read) != StorageStatus::Empty) return false;
+    bytes.data[0] = 0xEF;
+    if (storage.writeSlot(0, bytes) != StorageStatus::Ok) return false;
+    if (storage.readSlot(0, read) != StorageStatus::Ok || read.data[0] != 0xEF) return false;
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    return true;
+}
+
+bool fileSessionSaveLoadCycle() {
+    const auto dir = makeTempSaveDir();
+    std::error_code ec;
+    FakeClock game;
+    FakeClock session;
+    XorShift32 rng{1u};
+    FakeWallClock wall;
+    wall.set(2'000);
+    neripal::desktop::FileSaveStorage storage(dir);
+    Pet pet(game, rng);
+    SaveSession saves(pet, storage, wall, session);
+    if (saves.boot() != BootResult::Fresh) return false;
+    const int hungerBefore = pet.state().hunger;
+    saves.noteCareResult(pet.feed());
+    if (!saves.saveNow()) return false;
+    saves.noteCareResult(pet.feed());
+    if (!saves.saveNow()) return false;
+
+    Pet again(game, rng);
+    SaveSession second(again, storage, wall, session);
+    const bool restored = second.boot() == BootResult::Restored && again.state().hunger < hungerBefore;
+
+    const auto newer = storage.slotPath(1);
+    {
+        std::fstream file(newer, std::ios::binary | std::ios::in | std::ios::out);
+        if (!file) return false;
+        file.seekp(20);
+        char xorByte = 0;
+        file.seekg(20);
+        file.get(xorByte);
+        file.seekp(20);
+        file.put(static_cast<char>(static_cast<unsigned char>(xorByte) ^ 0x7Fu));
+    }
+    Pet third(game, rng);
+    SaveSession thirdSession(third, storage, wall, session);
+    const bool backup = thirdSession.boot() == BootResult::RestoredFromBackup;
+
+    std::filesystem::remove(storage.slotPath(0), ec);
+    std::filesystem::remove(storage.slotPath(1), ec);
+    Pet fourth(game, rng);
+    SaveSession fourthSession(fourth, storage, wall, session);
+    const bool fresh = fourthSession.boot() == BootResult::Fresh;
+    std::filesystem::remove_all(dir, ec);
+    return restored && backup && fresh;
+}
+
+bool systemWallClockIsTrustedNow() {
+    neripal::desktop::SystemWallClock wall;
+    const auto now = wall.nowUnixSeconds();
+    return now.has_value() && *now > 1'577'836'800;
+}
+
 }  // namespace
 
 int main() {
@@ -488,6 +574,9 @@ int main() {
         {"session debounce stops bursts", sessionDebounceStopsBursts},
         {"session gameplay clock does not accelerate autosave",
          sessionGameplayClockDoesNotAccelerateAutosave},
+        {"file storage writes via temp and replace", fileStorageWritesViaTempAndReplace},
+        {"file session save load cycle", fileSessionSaveLoadCycle},
+        {"system wall clock is trusted now", systemWallClockIsTrustedNow},
     };
 
     int failures = 0;

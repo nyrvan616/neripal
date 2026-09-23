@@ -4,7 +4,10 @@
 
 namespace neripal::simulator {
 
-void DebugController::restore(core::PetState state) { pet_.restore(state); }
+void DebugController::restore(core::PetState state) {
+    pet_.restore(state);
+    saves_.markDirty();
+}
 void DebugController::setHunger(int value) { auto s = pet_.state(); s.hunger = value; restore(s); }
 void DebugController::setHappiness(int value) { auto s = pet_.state(); s.happiness = value; restore(s); }
 void DebugController::setEnergy(int value) { auto s = pet_.state(); s.energy = value; restore(s); }
@@ -22,6 +25,11 @@ void DebugController::adjustStat(int index, int delta) {
         default: return;
     }
     restore(state);
+}
+
+void DebugController::reset() {
+    pet_.reset();
+    saves_.saveNow();
 }
 
 void DebugController::forceEvolution() {

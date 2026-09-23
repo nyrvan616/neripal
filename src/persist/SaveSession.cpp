@@ -206,6 +206,10 @@ void SaveSession::noteCareResult(core::CareResult result) {
     }
 }
 
+void SaveSession::markDirty() {
+    dirty_ = true;
+}
+
 void SaveSession::tick() {
     adoptWallClockIfNeeded();
     if (!dirty_) {
