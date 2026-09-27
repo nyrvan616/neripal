@@ -2,20 +2,50 @@
 #include "neripal/Version.hpp"
 #include "neripal/core/Pet.hpp"
 #include "neripal/core/XorShift32.hpp"
+#include "neripal/persist/SaveSession.hpp"
 #include "neripal/ui/PetView.hpp"
 #include "neripal/ui/UiController.hpp"
 #include "platform/desktop/DesktopPlatform.hpp"
+#include "platform/desktop/FileSaveStorage.hpp"
 #include "platform/desktop/ScaledClock.hpp"
+#include "platform/desktop/SessionClock.hpp"
+#include "platform/desktop/SystemWallClock.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <string_view>
 #include <vector>
+
+namespace {
+
+std::filesystem::path executableDirectory() {
+    wchar_t buffer[MAX_PATH]{};
+    const auto length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+    if (length == 0 || length >= MAX_PATH) {
+        return std::filesystem::current_path();
+    }
+    return std::filesystem::path(buffer).parent_path();
+}
+
+const char* bootLabel(neripal::persist::BootResult result) {
+    switch (result) {
+        case neripal::persist::BootResult::Restored:
+            return "RESTORED";
+        case neripal::persist::BootResult::RestoredFromBackup:
+            return "BACKUP";
+        case neripal::persist::BootResult::Fresh:
+        default:
+            return "FRESH";
+    }
+}
+
+}  // namespace
 
 int main(int argc, char* argv[]) {
     std::cout << neripal::version::kDisplayName << '\n';
@@ -29,12 +59,22 @@ int main(int argc, char* argv[]) {
 
     HINSTANCE instance = GetModuleHandleW(nullptr);
     neripal::desktop::ScaledClock clock;
+    neripal::desktop::SessionClock sessionClock;
+    neripal::desktop::SystemWallClock wallClock;
+    const auto saveDir = executableDirectory();
+    neripal::desktop::FileSaveStorage storage(saveDir);
     // Development default chosen by this composition root, not by Core.
     constexpr std::uint32_t kSimulatorRngSeed = 0x4E455249u;  // 'NERI'
     neripal::core::XorShift32 rng(kSimulatorRngSeed);
     neripal::core::Pet pet(clock, rng);
+    neripal::persist::SaveSession saves(pet, storage, wallClock, sessionClock);
+    const auto boot = saves.boot();
+    std::cout << "Save directory: " << saveDir.string() << '\n'
+              << "Boot: " << bootLabel(boot) << '\n'
+              << std::flush;
+
     neripal::desktop::DesktopPlatform platform(instance);
-    neripal::simulator::DebugController debug(pet, clock);
+    neripal::simulator::DebugController debug(pet, clock, saves);
     neripal::ui::PetView view;
     neripal::ui::UiController ui;
     int selectedStat = 0;
@@ -71,10 +111,12 @@ int main(int argc, char* argv[]) {
         }
         if (const auto care = ui.takeCareAction()) {
             const auto result = pet.apply(*care);
+            saves.noteCareResult(result);
             ui.beginCareFeedback(*care, result, clock.nowMillis());
         }
         pet.update();
         ui.update(clock.nowMillis());
+        saves.tick();
 
         static constexpr std::array<std::string_view, 5> kStatNames{
             "HUNGER", "HAPPINESS", "ENERGY", "HEALTH", "HYGIENE"};
@@ -85,6 +127,8 @@ int main(int argc, char* argv[]) {
             "C/BACKSPACE  back",
             "Esc  quit",
             "",
+            "SAVE " + std::string(bootLabel(saves.bootResult())),
+            std::string(saves.dirty() ? "DIRTY yes" : "DIRTY no"),
             "TIME x" + std::to_string(debug.timeScale()),
             "EDIT " + std::string(kStatNames[static_cast<std::size_t>(selectedStat)]),
             "Up/Down  +/-5",
@@ -99,6 +143,9 @@ int main(int argc, char* argv[]) {
         });
         view.render(platform, pet.state(), ui.state());
         platform.waitForNextFrame();
+    }
+    if (!saves.saveNow()) {
+        std::cout << "Save on exit failed\n" << std::flush;
     }
     return 0;
 }

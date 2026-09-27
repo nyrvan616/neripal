@@ -5,6 +5,7 @@
 #include "neripal/core/GameEvent.hpp"
 #include "neripal/core/IClock.hpp"
 #include "neripal/core/IRandom.hpp"
+#include "neripal/core/PetSnapshot.hpp"
 #include "neripal/core/PetState.hpp"
 
 #include <cstdint>
@@ -31,9 +32,18 @@ public:
     // kGameEventCapacity); the queue never grows.
     bool pollEvent(GameEvent& out) noexcept;
 
-    // Production-facing state restoration point for future persistence.
-    // Values are normalized so corrupt saves cannot break core invariants.
+    // Debug restoration from a presentation snapshot. Zeros needs remainder and
+    // infers Player Sleep only from `sleeping`. Persistence uses restoreSnapshot.
     void restore(const PetState& state);
+
+    PetSnapshot capture() const;
+    void restoreSnapshot(const PetSnapshot& snapshot);
+
+    // Advance age and needs across a powered-off gap. Does not read IClock for
+    // the gap, does not run Autonomy, and does not consume IRandom.
+    // Age is capped by kMaxAgeOfflineMs (defensive, not a gameplay rule).
+    // Needs are capped by kMaxNeedsOfflineMs.
+    void applyOffline(std::uint64_t ageElapsedMs, std::uint64_t needsElapsedMs);
 
 private:
     static int clampStat(int value) noexcept;

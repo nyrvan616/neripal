@@ -159,4 +159,126 @@ void Pet::restore(const PetState& state) {
     anchorClock();
 }
 
+PetSnapshot Pet::capture() const {
+    PetSnapshot snapshot;
+    snapshot.hunger = state_.hunger;
+    snapshot.happiness = state_.happiness;
+    snapshot.energy = state_.energy;
+    snapshot.health = state_.health;
+    snapshot.hygiene = state_.hygiene;
+    snapshot.ageMillis = state_.ageMillis;
+    snapshot.needsRemainderMs = needsRemainderMs_ > 0xFFFFFFFFull
+                                    ? 0xFFFFFFFFu
+                                    : static_cast<std::uint32_t>(needsRemainderMs_);
+    snapshot.stage = state_.stage;
+    snapshot.sleepCause = autonomy_.sleepCause();
+    snapshot.napRemainingMs = autonomy_.napRemainingMs(state_);
+    return snapshot;
+}
+
+void Pet::restoreSnapshot(const PetSnapshot& snapshot) {
+    state_ = PetState{};
+    state_.hunger = clampStat(snapshot.hunger);
+    state_.happiness = clampStat(snapshot.happiness);
+    state_.energy = clampStat(snapshot.energy);
+    state_.health = clampStat(snapshot.health);
+    state_.hygiene = clampStat(snapshot.hygiene);
+    state_.ageMillis = snapshot.ageMillis;
+    state_.stage = snapshot.stage;
+    updateEvolution();
+    needsRemainderMs_ = snapshot.needsRemainderMs;
+    if (needsRemainderMs_ >= balance::kNeedsStepMs) {
+        needsRemainderMs_ %= balance::kNeedsStepMs;
+    }
+    events_.clear();
+    autonomy_.restoreSnapshot(state_, snapshot.sleepCause, snapshot.napRemainingMs);
+    anchorClock();
+}
+
+void Pet::applyOffline(std::uint64_t ageElapsedMs, std::uint64_t needsElapsedMs) {
+    if (ageElapsedMs > balance::kMaxAgeOfflineMs) {
+        ageElapsedMs = balance::kMaxAgeOfflineMs;
+    }
+    if (needsElapsedMs > balance::kMaxNeedsOfflineMs) {
+        needsElapsedMs = balance::kMaxNeedsOfflineMs;
+    }
+
+    state_.ageMillis += ageElapsedMs;
+    updateEvolution();
+
+    const bool startedNap = autonomy_.sleepCause() == SleepCause::Nap;
+    SleepCause cause = autonomy_.sleepCause();
+    std::uint64_t napLeft = startedNap ? autonomy_.napRemainingMs(state_) : 0;
+
+    auto endNap = [&]() {
+        cause = SleepCause::None;
+        napLeft = 0;
+        state_.sleeping = false;
+    };
+
+    if (cause == SleepCause::Nap && state_.energy >= balance::kNapWakeEnergy) {
+        endNap();
+    }
+
+    bool phaseStable = cause != SleepCause::Nap;
+    std::uint32_t stableSteps = 0;
+    std::uint64_t cursor = 0;
+
+    while (cursor < needsElapsedMs) {
+        if (phaseStable && stableSteps >= balance::kNeedsSettleSteps) {
+            break;
+        }
+        if (needsRemainderMs_ >= balance::kNeedsStepMs) {
+            needsRemainderMs_ %= balance::kNeedsStepMs;
+        }
+
+        const std::uint64_t untilStep = balance::kNeedsStepMs - needsRemainderMs_;
+        std::uint64_t chunk = std::min(untilStep, needsElapsedMs - cursor);
+        const bool inNap = cause == SleepCause::Nap && napLeft > 0;
+        const bool sleepPhase = cause == SleepCause::Player || inNap;
+        if (inNap && chunk > napLeft) {
+            chunk = napLeft;
+        }
+
+        needsRemainderMs_ += chunk;
+        cursor += chunk;
+        if (inNap) {
+            napLeft -= chunk;
+            if (napLeft == 0) {
+                cause = SleepCause::None;
+                state_.sleeping = false;
+            }
+        }
+
+        if (needsRemainderMs_ >= balance::kNeedsStepMs) {
+            needsRemainderMs_ -= balance::kNeedsStepMs;
+            state_.sleeping = sleepPhase;
+            applyNeedsStep();
+            if (phaseStable) {
+                ++stableSteps;
+            }
+            if (sleepPhase && cause == SleepCause::Nap &&
+                state_.energy >= balance::kNapWakeEnergy) {
+                endNap();
+            }
+        }
+
+        if (cause != SleepCause::Nap) {
+            phaseStable = true;
+        }
+    }
+
+    if (cursor < needsElapsedMs) {
+        const std::uint64_t rest = needsElapsedMs - cursor;
+        needsRemainderMs_ = (needsRemainderMs_ + rest) % balance::kNeedsStepMs;
+    }
+
+    const bool napEnded = startedNap && cause != SleepCause::Nap;
+    const auto napRemaining = static_cast<std::uint32_t>(napLeft);
+    events_.clear();
+    autonomy_.presentOffline(state_, cause, napRemaining, napEnded);
+    autonomy_.onStatsChanged(state_, events_);
+    anchorClock();
+}
+
 }  // namespace neripal::core
