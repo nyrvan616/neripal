@@ -68,9 +68,14 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME core.unit COMMAND neripal_core_tests)
 
-    add_executable(neripal_ui_tests tests/unit/ui/UiTests.cpp)
-    target_include_directories(neripal_ui_tests PRIVATE include)
-    target_link_libraries(neripal_ui_tests PRIVATE neripal_ui)
+    add_executable(neripal_ui_tests
+        tests/unit/ui/UiTests.cpp
+        simulator/debug/DebugController.cpp
+        src/platform/desktop/ScaledClock.cpp
+    )
+    target_include_directories(neripal_ui_tests PRIVATE
+        include src simulator/debug tests/unit/core tests/unit/persist)
+    target_link_libraries(neripal_ui_tests PRIVATE neripal_ui neripal_persist)
     if(NOT MSVC)
         target_link_options(neripal_ui_tests PRIVATE -static -static-libgcc -static-libstdc++)
     endif()

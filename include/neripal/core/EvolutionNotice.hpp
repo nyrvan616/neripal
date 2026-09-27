@@ -8,7 +8,7 @@ namespace neripal::core {
 
 // One life-stage crossing for Presentation. Not a GameEvent: that ring is
 // cleared on restore and drops old entries. Confirming a notice does not
-// change stage or form. Save V2 will serialize the queue; it already survives
+// change stage or form. Save V2 stores the pending queue; it also survives
 // an in-memory snapshot.
 inline constexpr std::uint8_t kEvolutionNoticeCapacity = 4;
 

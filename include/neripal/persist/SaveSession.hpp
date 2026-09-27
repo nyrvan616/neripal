@@ -35,6 +35,10 @@ public:
     std::int64_t savedUnixSeconds() const noexcept { return savedUnixSeconds_; }
     std::uint32_t nextSequence() const noexcept { return nextSequence_; }
 
+    static bool sameSnapshot(const core::PetSnapshot& a, const core::PetSnapshot& b) noexcept {
+        return snapshotsEqual(a, b);
+    }
+
 private:
     struct SlotView {
         bool present = false;
@@ -47,7 +51,6 @@ private:
     void adoptWallClockIfNeeded();
     void applyOfflinePolicy(std::int64_t loadedUnix);
     bool writeRecord();
-    static bool sameSnapshot(const core::PetSnapshot& a, const core::PetSnapshot& b) noexcept;
     static std::uint64_t gapMillis(std::int64_t from, std::int64_t to) noexcept;
 
     core::Pet& pet_;

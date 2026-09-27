@@ -15,18 +15,24 @@ Simulator / WaveshareS3Platform
           Game Core
 ```
 
-- `core`: `Pet`, `PetState`, `CareAction`/`CareResult`, `Mood deriveMood(...)`,
-  `Activity`/`IdleVariant`, `GameEvent`/`pollEvent()`, reglas y constantes de
-  balance. Solo C++17 estándar. Mood no vive en el snapshot; la actividad actual
-  sí, como pose de presentación. Los bordes de actividad se consumen una vez.
+- `core`: `Pet`, `PetState`, `CareAction`/`CareResult`, `needLevel()`,
+  `CareHistory`, `EvolutionRules`, `EvolutionNotice`, etapa y `FormId` por
+  separado, `Mood deriveMood(...)`, `Activity`/`IdleVariant`,
+  `GameEvent`/`pollEvent()`, reglas y constantes de balance. Solo C++17
+  estándar. Mood no vive en el snapshot; la actividad actual sí, como pose de
+  presentación. Los bordes de actividad se consumen una vez.
 - `ui`: compone las pantallas lógicas 240x240 mediante `IRenderer`; recibe un
   `PetState` inmutable y no cambia el juego. `UiController` conserva navegación,
-  intención de cuidado pendiente y overlays transitorios de presentación.
+  intención de cuidado pendiente, la copia del `EvolutionNotice` ya mostrado y
+  overlays transitorios de presentación. Los niveles de necesidad salen de
+  `needLevel()`, no de umbrales copiados en la vista.
 - `platform`: contratos pequeños (`IClock`, `IInput`, `IRenderer`) e implementaciones
   Win32 y ESP32-S3.
 - `simulator`: ensambla Core, UI y desktop; contiene herramientas exclusivamente de
   desarrollo.
-- `tests`: ejecutables host. Core enlaza `neripal_core`; UI enlaza `neripal_ui`.
+- `tests`: ejecutables host. Core enlaza `neripal_core`; UI enlaza `neripal_ui`
+  y, para `DebugController`, también persistencia y el reloj de escritorio;
+  persistencia enlaza `neripal_persist`.
 
 El Core no puede incluir Arduino, Win32, SDL, LVGL, GPIO ni drivers de pantalla. La
 UI tampoco puede llamar acciones de `Pet`: encola un `CareAction` y presenta
@@ -35,9 +41,10 @@ nunca al revés.
 
 ## Cuidado
 
-`Pet::apply(CareAction)` es el único despacho de Feed, Train, Sleep, Wake y Clean.
-Cada acción devuelve un `CareResult` motivado. Si el resultado no es `Applied`, el
-Core no muta stats.
+`Pet::apply(CareAction)` es el único despacho de Feed, Train, Sleep, Wake, Clean,
+Pet y Play. Cada acción devuelve un `CareResult` motivado. Si el resultado no es
+`Applied`, el Core no muta stats. Pet y Play no tienen reglas propias en la UI:
+el menú encola la acción y el composition root llama a `apply`.
 
 Los composition roots (simulador y firmware) hacen el mismo cableado:
 
@@ -46,12 +53,47 @@ Los composition roots (simulador y firmware) hacen el mismo cableado:
 3. El root pasa acción y `CareResult` a `beginCareFeedback`.
 4. `PetView` traduce el enum a overlay; no relee umbrales de `Balance` ni reevalúa
    sueño o energía para decidir el motivo.
+5. Si hay un `EvolutionNotice` y la UI no está mostrando uno, el root lo presenta.
+   `confirmEvolutionNotice()` se llama solo después de que el usuario confirma el
+   aviso ya dibujado. Esa llamada no cambia etapa ni forma y no ejecuta
+   `EvolutionRules`.
 
 Tras un `Applied`, Autonomy interrumpe la activity (`completed=false`) y entra
-Eat (Feed), Happy (Train/Clean), Sleep o Idle (Wake). `RejectedNoEnergy` puede
+Eat (Feed), Happy (Train, Clean, Pet o Play), Sleep o Idle (Wake). `RejectedNoEnergy` puede
 pasar a Tired si no está ya en Tired. `RejectedAsleep` conserva Sleep/Nap;
 `RejectedAlreadySleeping` conserva Sleep; `RejectedAlreadyAwake` no cambia
 activity.
+
+## Necesidades e historial
+
+Los cinco stats base viven en `PetState`. `needLevel(Need, value)` es la única
+autoridad de Normal, Attention y Urgent. Salud y felicidad son stats compuestos
+persistentes; su fórmula de 0.6 está en `applyNeedsStep` y es balance provisional.
+
+`CareHistory` guarda, por etapa, mistakes, entrenamientos y minutos en banda de
+salud y felicidad, más los episodios abiertos de las cinco necesidades. Ese
+historial no es el stat de este minuto. Presentation no abre episodios ni suma
+mistakes.
+
+## Etapa, forma y reglas
+
+`EvolutionStage` y `FormId` son campos distintos. La edad, comparada con las
+compuertas de `evolution::`, decide si Core puede avanzar una etapa. `EvolutionRules`
+elige la forma solo cuando el cruce tiene varias salidas; en 0.6 ese cruce es
+Child → Adult. El resto de cruces asigna la forma coherente de esa etapa dentro
+de Core. La regla ganadora se resuelve una vez. Si tiene dos salidas, consume un
+`IRandom::nextBounded` y la forma queda en el snapshot.
+
+`EvolutionNotice` es una cola propia, no un `GameEvent`. Sobrevive al save. El
+anillo de eventos no. La UI muestra el aviso y el root lo confirma; no vuelve a
+correr las reglas.
+
+## Persistencia
+
+`SaveSession` escribe siempre V2 y decodifica V1 y V2. La migración V1 ocurre en
+el codec y deja una forma coherente con la etapa. `restoreSnapshot` aplica el
+resultado y no llama a `EvolutionRules` ni al RNG de evolución. El detalle de
+tamaños, campos y migración está en `MILESTONE_0.6.md`.
 
 ## Mood
 
@@ -83,9 +125,12 @@ y no descarta tiempo.
 
 ## Tiempo
 
-`Pet` recibe `IClock` e `IRandom` por constructor. `update()` compara timestamps monotónicos,
-acumula edad exacta y aplica reglas en pasos deterministas de un minuto simulado.
-Las constantes están centralizadas en `Balance.hpp`. Hygiene baja solo despierto.
+`Pet` recibe `IClock` e `IRandom` por constructor. `update()` y `applyOffline()`
+comparten `stepMinute`: el mismo minuto simulado aplica necesidades y, si la edad
+llega a la compuerta, una etapa. Las constantes están en `Balance.hpp`. Hygiene
+baja despierto y, más lento, también dormido. El reloj civil no entra al Core:
+`SaveSession` convierte el hueco de pared en dos deltas y llama a `applyOffline`.
+Offline no avanza la ventana de care mistakes. El detalle está en `MILESTONE_0.6.md`.
 
 Autonomy avanza con el mismo elapsed: acumula tiempo sobre la actividad, y si esta
 termina el resto entra en la siguiente. Un tope
@@ -99,9 +144,9 @@ de las transiciones.
   discontinuidades.
 - Tests: `FakeClock` avanza explícitamente; nunca duerme el proceso.
 
-Un reloj que retrocede se vuelve a anclar sin producir una delta negativa. En una
-etapa de persistencia habrá que decidir si el tiempo apagado cuenta y convertir el
-reloj civil a una delta validada antes de restaurar el Core.
+Un reloj que retrocede se vuelve a anclar sin producir una delta negativa. El
+tiempo apagado sí cuenta, con los topes `kMaxAgeOfflineMs` y `kMaxNeedsOfflineMs`,
+después de que `SaveSession` valida el reloj de pared.
 
 ## Eventos
 
@@ -110,6 +155,10 @@ reloj civil a una delta validada antes de restaurar el Core.
 snapshot. `pollEvent()` consume el más viejo; si el anillo está lleno se descarta
 el más viejo. `reset()` / `restore()` vacían la cola para no reemitir bordes
 fantasma.
+
+El nacimiento es `GameEventKind::Hatched` al pasar de Egg a Baby en vivo. No es
+una etapa. Offline no rellena ese anillo: el aviso de evolución va a
+`EvolutionNotice`.
 
 Hoy se emiten `ActivityStarted` y `ActivityFinished`:
 
@@ -130,14 +179,16 @@ la implementación portable; la seed llega siempre del composition root.
   no envuelve ni inventa valores.
 - Simulator: seed de desarrollo en `simulator/main.cpp`.
 - Firmware: placeholder documentado en el composition root de Waveshare. No es
-  política de producto ni el valor `1`. La fuente real (ADC, `esp_random`, NVS)
-  queda para cuando exista HAL/persistencia.
+  política de producto ni el valor `1`. La partida sí se guarda en NVS. La
+  entropía de la semilla (ADC o `esp_random`) sigue pendiente.
 
 `nextBounded(n)` proyecta un `nextU32()` a `[0, n)`. Needs decay no consume RNG.
-Autonomy es el único consumidor: wander, facing, distancia, duración y variante
-de Idle, duración de Nap. Construcción, `reset()`, `restore()`, Sleep/Wake y el
-primer Idle usan una duración por defecto y no muestrean. Egg y Sleep congelados
-tampoco consumen. Eat/Happy/Tired/Dirty/Annoyed usan duraciones fijas.
+Autonomy lo consume en wander, facing, distancia, duración y variante de Idle, y
+duración de Nap. `resolveEvolution` lo consume solo cuando la regla ganadora tiene
+más de una salida, una vez, y la forma persiste. Construcción, `reset()`,
+`restore()`, cargar un save, Sleep/Wake y el primer Idle usan una duración por
+defecto y no muestrean la evolución otra vez. Egg y Sleep congelados tampoco
+consumen autonomía. Eat/Happy/Tired/Dirty/Annoyed usan duraciones fijas.
 
 `restore()` / `reset()` centran `x`, restauran facing y dejan Idle o Sleep de
 jugador según `sleeping`; la actividad transitoria no se conserva del snapshot
@@ -147,35 +198,36 @@ entrante.
 
 El simulador es una plataforma ejecutable: crea una superficie de dispositivo,
 recoge teclado, avanza el reloj y presenta frames. `DebugController` es una
-herramienta de desarrollo que ofrece velocidad, cambio de stats (incluidos hygiene),
-acciones de cuidado y reset; su panel se dibuja fuera del viewport 240x240 y no se
-compila en PlatformIO.
+herramienta de desarrollo que ofrece velocidad, cambio de los siete stats editables,
+acciones de cuidado (incluidas Pet y Play) y reset. Su panel se dibuja fuera del
+viewport 240x240 y no se compila en PlatformIO.
 
-El controlador no requiere `setHungerForDebug()` en `Pet`. Copia el snapshot,
-cambia el valor y usa `Pet::restore()`, que es una frontera legítima para la futura
-persistencia y además normaliza invariantes.
+El controlador no agrega setters de debug en `Pet`. Copia el estado, cambia el
+valor y usa `Pet::restore()`, que normaliza los stats. `forceEvolution` escribe la
+etapa siguiente y una forma coherente por esa misma vía. No llama a
+`EvolutionRules` y no es el ciclo de juego. `restore()` vacía avisos y episodios.
 
 ## Presentación
 
 `PetView` usa solo rectángulos y texto, con una mascota placeholder original. Las
 coordenadas siempre están en 240x240. Home coloca el sprite en `PetState.x` con
-facing; Status usa un thumbnail fijo. Eat, Dirty, Annoyed y Sleep/Nap se leen de
-`activity` / `deriveMood`, no de umbrales locales. `idleFrame` es playback (bob);
-Walk usa elapsed de Core para el paso. Win32 escala esas coordenadas por un
-entero y la futura implementación ST7789 podrá consumir las mismas llamadas. No
-se agregó LVGL: para esta interfaz aumentaría dependencias y dividiría el flujo
-de render entre host y dispositivo sin aportar widgets necesarios.
+facing y, como máximo, las necesidades que `needLevel()` no marca Normal. Urgent
+usa el mismo símbolo con más intensidad. Status muestra los números, la etapa y
+el identificador de forma; no es la pantalla del sprite. Eat, Dirty, Annoyed y
+Sleep/Nap se leen de `activity` / `deriveMood`, no de umbrales locales.
+`idleFrame` es playback (bob); Walk usa elapsed de Core para el paso. Win32
+escala esas coordenadas por un entero. El `IRenderer` de Waveshare acepta las
+mismas llamadas y hoy las deja vacías, `drawText` incluido. No se agregó LVGL.
 
 ## Tests
 
-`neripal_core_tests` y `neripal_ui_tests` son binarios C++ sin framework externo.
-El primero comprueba acciones, `CareResult`, límites, degradación temporal, RNG
-(`XorShift32`, `FakeClock`, `FakeRandom`), la tabla de `deriveMood`, Idle/Walk/Nap,
-reacciones de cuidado, flancos Dirty/Annoyed, invarianza de catch-up frente al
-tamaño de paso y `pollEvent()` (consumo único, anillo fijo que descarta el más
-viejo); el segundo usa un renderer falso para comprobar navegación, overlays,
-banners de mood, Eat/Dirty placeholder y límites del viewport al caminar. CTest
-solo descubre/ejecuta los binarios; ninguno depende de SDL, Arduino ni hardware.
+`neripal_core_tests`, `neripal_ui_tests` y `neripal_persist_tests` son binarios
+C++ sin framework externo. Core cubre cuidado, necesidades, historial, etapas,
+reglas, offline y avisos. UI cubre el menú, las señales de necesidad, el aviso de
+evolución y el viewport, con un renderer falso. Persistencia cubre V1, V2, la
+migración y el snapshot. CTest solo descubre y ejecuta los binarios. Ninguno
+depende de SDL, Arduino ni hardware. El recuento del cierre 0.6 está en
+`MILESTONE_0.6.md`.
 
 ## Añadir una plataforma
 

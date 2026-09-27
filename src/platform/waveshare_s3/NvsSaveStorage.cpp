@@ -9,6 +9,14 @@ namespace {
 
 constexpr const char* kNamespace = "neripal";
 
+// partitions_16mb.csv reserves 0x5000 (20 KiB) for NVS. ESP-IDF keeps one 4 KiB
+// page as state, and nvs_set_blob accepts a value up to roughly 15 KiB on that
+// partition. Two V2 slots of 233 bytes, plus the namespace entry, stay inside
+// one data page even before counting entry headers.
+static_assert(neripal::persist::kSaveV2BlobBytes <= neripal::persist::kSaveBlobCapacity);
+static_assert(neripal::persist::kSaveBlobCapacity <= 1024);
+static_assert(2 * neripal::persist::kSaveBlobCapacity < 0x1000);
+
 }  // namespace
 
 const char* NvsSaveStorage::slotKey(std::uint8_t slot) noexcept {

@@ -159,7 +159,7 @@ bool codecRejectsUnknownVersion() {
     std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
     std::uint16_t written = 0;
     if (!encodeOk(record, blob, written)) return false;
-    blob[4] = 2;
+    blob[4] = 3;
     blob[5] = 0;
     return neripal::persist::decode(blob, written).status == DecodeStatus::UnsupportedVersion;
 }
@@ -175,7 +175,8 @@ bool codecRejectsBadPayloadLength() {
 }
 
 void rewriteCrc(std::uint8_t* blob) {
-    const auto crc = neripal::persist::crc32(blob + 12, neripal::persist::kSaveV1PayloadBytes);
+    const auto payloadBytes = static_cast<std::uint16_t>(blob[6] | (static_cast<std::uint16_t>(blob[7]) << 8));
+    const auto crc = neripal::persist::crc32(blob + 12, payloadBytes);
     blob[8] = static_cast<std::uint8_t>(crc);
     blob[9] = static_cast<std::uint8_t>(crc >> 8);
     blob[10] = static_cast<std::uint8_t>(crc >> 16);
@@ -549,6 +550,322 @@ bool fileSessionSaveLoadCycle() {
     return restored && backup && fresh;
 }
 
+bool encodeV2Ok(const SaveRecord& record, std::uint8_t* blob, std::uint16_t& written) {
+    return neripal::persist::encodeV2(record, blob, neripal::persist::kSaveBlobCapacity, written) &&
+           written == neripal::persist::kSaveV2BlobBytes;
+}
+
+SaveRecord fullV2Record() {
+    using neripal::core::EpisodeState;
+    using neripal::core::EvolutionStage;
+    using neripal::core::FormId;
+    SaveRecord record;
+    record.sequence = 9;
+    record.savedUnixSeconds = -15;
+    auto& snap = record.snapshot;
+    snap.hunger = 11;
+    snap.happiness = 22;
+    snap.energy = 33;
+    snap.health = 44;
+    snap.hygiene = 55;
+    snap.affection = 66;
+    snap.stimulation = 77;
+    snap.ageMillis = 0x0102030405060708ull;
+    snap.needsRemainderMs = 12'345;
+    snap.needsStepPhase = 7;
+    snap.stage = EvolutionStage::Adult;
+    snap.form = FormId::AdultSecret;
+    snap.sleepCause = SleepCause::Nap;
+    snap.napRemainingMs = 4'000;
+    snap.care.episodes[0].state = EpisodeState::Open;
+    snap.care.episodes[0].stepsRemaining = neripal::core::balance::kAttentionWindowSteps;
+    snap.care.episodes[2].state = EpisodeState::Counted;
+    snap.care.lifetimeCareMistakes = 4;
+    auto& baby = neripal::core::historyFor(snap.care, EvolutionStage::Baby);
+    baby.careMistakes = 1;
+    baby.trainCount = 2;
+    baby.steps = 300;
+    baby.healthGoodSteps = 10;
+    baby.healthPoorSteps = 3;
+    baby.happinessGoodSteps = 8;
+    baby.happinessPoorSteps = 1;
+    baby.responseCount = 1;
+    baby.responseStepsSum = 4;
+    auto& child = neripal::core::historyFor(snap.care, EvolutionStage::Child);
+    child.steps = 1'080;
+    child.trainCount = 18;
+    child.healthGoodSteps = 900;
+    child.happinessGoodSteps = 800;
+    neripal::core::historyFor(snap.care, EvolutionStage::Adult).steps = 12;
+    neripal::core::historyFor(snap.care, EvolutionStage::Final).steps = 1;
+    snap.noticeCount = 2;
+    snap.notices[0].from = EvolutionStage::Egg;
+    snap.notices[0].to = EvolutionStage::Baby;
+    snap.notices[0].form = FormId::Juvenile;
+    snap.notices[1].from = EvolutionStage::Baby;
+    snap.notices[1].to = EvolutionStage::Child;
+    snap.notices[1].form = FormId::Juvenile;
+    return record;
+}
+
+bool v2PayloadFitsStorage() {
+    namespace P = neripal::persist;
+    return P::kSaveV2PayloadBytes == 221 && P::kSaveV2BlobBytes == 233 &&
+           P::kSaveV2BlobBytes <= P::kSaveBlobCapacity &&
+           P::kSaveBlobCapacity - P::kSaveV2BlobBytes >= 32 &&
+           2 * P::kSaveBlobCapacity < 0x5000;
+}
+
+bool codecV2Roundtrip() {
+    const auto record = fullV2Record();
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeV2Ok(record, blob, written)) return false;
+    if (blob[4] != 2 || blob[5] != 0) return false;
+    const auto decoded = neripal::persist::decode(blob, written);
+    return decoded.status == DecodeStatus::Ok && decoded.record.sequence == 9 &&
+           decoded.record.savedUnixSeconds == -15 &&
+           SaveSession::sameSnapshot(decoded.record.snapshot, record.snapshot);
+}
+
+bool migratedV1(EvolutionStage stage, neripal::core::FormId form) {
+    SaveRecord record;
+    record.sequence = 3;
+    record.savedUnixSeconds = 80;
+    record.snapshot.stage = stage;
+    record.snapshot.hunger = 41;
+    record.snapshot.ageMillis = 99;
+    record.snapshot.needsRemainderMs = 1'000;
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeOk(record, blob, written)) return false;
+    const auto decoded = neripal::persist::decode(blob, written);
+    if (decoded.status != DecodeStatus::Ok) return false;
+    const auto& snap = decoded.record.snapshot;
+    if (snap.stage != stage || snap.form != form) return false;
+    if (snap.affection != 70 || snap.stimulation != 70 || snap.needsStepPhase != 0) return false;
+    if (snap.noticeCount != 0 || snap.care.lifetimeCareMistakes != 0) return false;
+    if (snap.hunger != 41 || snap.ageMillis != 99 || snap.needsRemainderMs != 1'000) return false;
+    if (decoded.record.sequence != 3 || decoded.record.savedUnixSeconds != 80) return false;
+    for (const auto& episode : snap.care.episodes) {
+        if (episode.state != neripal::core::EpisodeState::None || episode.stepsRemaining != 0) {
+            return false;
+        }
+    }
+    const EvolutionStage stages[] = {EvolutionStage::Egg, EvolutionStage::Baby, EvolutionStage::Child,
+                                     EvolutionStage::Adult, EvolutionStage::Final};
+    for (const auto historyStage : stages) {
+        const auto& history = neripal::core::historyFor(snap.care, historyStage);
+        if (history.steps != 0 || history.careMistakes != 0 || history.trainCount != 0) return false;
+    }
+    return snap.notices[0].form == neripal::core::FormId::None;
+}
+
+bool codecMigratesV1Egg() { return migratedV1(EvolutionStage::Egg, neripal::core::FormId::None); }
+
+bool codecMigratesV1Baby() {
+    return migratedV1(EvolutionStage::Baby, neripal::core::FormId::Juvenile);
+}
+
+bool codecMigratesV1Child() {
+    return migratedV1(EvolutionStage::Child, neripal::core::FormId::Juvenile);
+}
+
+bool codecMigratesV1Adult() {
+    return migratedV1(EvolutionStage::Adult, neripal::core::FormId::AdultC);
+}
+
+bool codecMigratesV1Final() {
+    return migratedV1(EvolutionStage::Final, neripal::core::FormId::AdultC);
+}
+
+bool v1BytesAreNotReadAsV2() {
+    SaveRecord record;
+    record.snapshot.stage = EvolutionStage::Baby;
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeOk(record, blob, written)) return false;
+    blob[4] = 2;
+    blob[5] = 0;
+    return neripal::persist::decode(blob, written).status == DecodeStatus::BadLength;
+}
+
+bool codecV2RejectsCorruptCrc() {
+    const auto record = fullV2Record();
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeV2Ok(record, blob, written)) return false;
+    blob[12 + neripal::persist::kSaveV2OffHistory] ^= 0x01;
+    return neripal::persist::decode(blob, written).status == DecodeStatus::BadChecksum;
+}
+
+bool codecV2RejectsInvalidForm() {
+    auto record = fullV2Record();
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeV2Ok(record, blob, written)) return false;
+    blob[12 + neripal::persist::kSaveV2OffForm] = 99;
+    rewriteCrc(blob);
+    if (neripal::persist::decode(blob, written).status != DecodeStatus::InvalidForm) return false;
+    blob[12 + neripal::persist::kSaveV2OffForm] =
+        static_cast<std::uint8_t>(neripal::core::FormId::Juvenile);
+    rewriteCrc(blob);
+    return neripal::persist::decode(blob, written).status == DecodeStatus::InvalidForm;
+}
+
+bool codecV2RejectsInvalidEpisode() {
+    const auto record = fullV2Record();
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeV2Ok(record, blob, written)) return false;
+    blob[12 + neripal::persist::kSaveV2OffEpisodes] = 9;
+    rewriteCrc(blob);
+    if (neripal::persist::decode(blob, written).status != DecodeStatus::InvalidEpisode) return false;
+    blob[12 + neripal::persist::kSaveV2OffEpisodes] =
+        static_cast<std::uint8_t>(neripal::core::EpisodeState::Open);
+    blob[12 + neripal::persist::kSaveV2OffEpisodes + 1] = 0;
+    rewriteCrc(blob);
+    return neripal::persist::decode(blob, written).status == DecodeStatus::InvalidEpisode;
+}
+
+bool codecV2RejectsInvalidNotice() {
+    const auto record = fullV2Record();
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeV2Ok(record, blob, written)) return false;
+    blob[12 + neripal::persist::kSaveV2OffNoticeCount] = 5;
+    rewriteCrc(blob);
+    if (neripal::persist::decode(blob, written).status != DecodeStatus::InvalidNotice) return false;
+    blob[12 + neripal::persist::kSaveV2OffNoticeCount] = 1;
+    blob[12 + neripal::persist::kSaveV2OffNotices + 1] =
+        static_cast<std::uint8_t>(EvolutionStage::Adult);
+    rewriteCrc(blob);
+    return neripal::persist::decode(blob, written).status == DecodeStatus::InvalidNotice;
+}
+
+bool sameSnapshotDetectsNewFields() {
+    PetSnapshot left;
+    left.stage = EvolutionStage::Baby;
+    left.form = neripal::core::FormId::Juvenile;
+    if (!SaveSession::sameSnapshot(left, left)) return false;
+    auto right = left;
+    right.affection = left.affection + 1;
+    if (SaveSession::sameSnapshot(left, right)) return false;
+    right = left;
+    right.stimulation = left.stimulation + 1;
+    if (SaveSession::sameSnapshot(left, right)) return false;
+    right = left;
+    right.needsStepPhase = 3;
+    if (SaveSession::sameSnapshot(left, right)) return false;
+    right = left;
+    right.form = neripal::core::FormId::None;
+    if (SaveSession::sameSnapshot(left, right)) return false;
+    right = left;
+    neripal::core::historyFor(right.care, EvolutionStage::Child).steps = 8;
+    if (SaveSession::sameSnapshot(left, right)) return false;
+    right = left;
+    right.care.episodes[1].state = neripal::core::EpisodeState::Open;
+    right.care.episodes[1].stepsRemaining = 4;
+    if (SaveSession::sameSnapshot(left, right)) return false;
+    right = left;
+    right.care.lifetimeCareMistakes = 2;
+    if (SaveSession::sameSnapshot(left, right)) return false;
+    right = left;
+    right.noticeCount = 1;
+    right.notices[0].from = EvolutionStage::Egg;
+    right.notices[0].to = EvolutionStage::Baby;
+    right.notices[0].form = neripal::core::FormId::Juvenile;
+    return !SaveSession::sameSnapshot(left, right);
+}
+
+bool loadAdultOrFinalDoesNotReroll(EvolutionStage stage) {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng(std::vector<std::uint32_t>{0u});
+    Pet pet(clock, rng);
+    SaveRecord record;
+    record.snapshot.stage = stage;
+    record.snapshot.form = neripal::core::FormId::AdultB;
+    record.snapshot.sleepCause = SleepCause::Player;
+    record.snapshot.ageMillis = stage == EvolutionStage::Final ? E::kFinalAgeMs : E::kAdultAgeMs;
+    auto& child = neripal::core::historyFor(record.snapshot.care, EvolutionStage::Child);
+    child.trainCount = 18;
+    child.steps = 100;
+    child.healthGoodSteps = 100;
+    child.happinessGoodSteps = 100;
+    std::uint8_t blob[neripal::persist::kSaveBlobCapacity]{};
+    std::uint16_t written = 0;
+    if (!encodeV2Ok(record, blob, written)) return false;
+    const auto decoded = neripal::persist::decode(blob, written);
+    if (decoded.status != DecodeStatus::Ok || rng.remaining() != 1) return false;
+    pet.restoreSnapshot(decoded.record.snapshot);
+    if (pet.state().form != neripal::core::FormId::AdultB || pet.state().stage != stage) return false;
+    clock.advance(neripal::core::balance::kNeedsStepMs);
+    pet.update();
+    return pet.state().stage == stage && pet.state().form == neripal::core::FormId::AdultB &&
+           rng.remaining() == 1;
+}
+
+bool loadAdultDoesNotReroll() { return loadAdultOrFinalDoesNotReroll(EvolutionStage::Adult); }
+
+bool loadFinalDoesNotReroll() { return loadAdultOrFinalDoesNotReroll(EvolutionStage::Final); }
+
+bool noticeSurvivesSaveUntilConfirmed() {
+    SessionEnv env;
+    env.wall.set(5'000);
+    if (env.saves.boot() != BootResult::Fresh) return false;
+    auto snap = env.pet.capture();
+    snap.stage = EvolutionStage::Child;
+    snap.form = neripal::core::FormId::Juvenile;
+    snap.noticeCount = 1;
+    snap.notices[0].from = EvolutionStage::Baby;
+    snap.notices[0].to = EvolutionStage::Child;
+    snap.notices[0].form = neripal::core::FormId::Juvenile;
+    env.pet.restoreSnapshot(snap);
+    if (!env.saves.saveNow()) return false;
+
+    FakeClock game2;
+    FakeClock session2;
+    XorShift32 rng2{3u};
+    Pet loaded(game2, rng2);
+    SaveSession second(loaded, env.store, env.wall, session2);
+    if (second.boot() != BootResult::Restored) return false;
+    neripal::core::EvolutionNotice notice{};
+    if (loaded.pendingEvolutionNotices() != 1 || !loaded.peekEvolutionNotice(notice)) return false;
+    if (notice.from != EvolutionStage::Baby || notice.to != EvolutionStage::Child ||
+        notice.form != neripal::core::FormId::Juvenile) {
+        return false;
+    }
+    if (loaded.state().stage != EvolutionStage::Child ||
+        loaded.state().form != neripal::core::FormId::Juvenile) {
+        return false;
+    }
+    if (!loaded.confirmEvolutionNotice() || !second.saveNow()) return false;
+
+    Pet again(game2, rng2);
+    SaveSession third(again, env.store, env.wall, session2);
+    if (third.boot() != BootResult::Restored) return false;
+    return again.pendingEvolutionNotices() == 0 && again.state().stage == EvolutionStage::Child &&
+           again.state().form == neripal::core::FormId::Juvenile;
+}
+
+bool fileStorageAcceptsV2Blob() {
+    const auto dir = makeTempSaveDir();
+    neripal::desktop::FileSaveStorage storage(dir);
+    SaveBytes bytes{};
+    bytes.size = neripal::persist::kSaveV2BlobBytes;
+    bytes.data[0] = 0x11;
+    bytes.data[neripal::persist::kSaveV2BlobBytes - 1] = 0x5A;
+    const bool wrote = storage.writeSlot(0, bytes) == StorageStatus::Ok;
+    SaveBytes read{};
+    const bool roundtrip = wrote && storage.readSlot(0, read) == StorageStatus::Ok &&
+                           read.size == bytes.size && read.data[0] == 0x11 &&
+                           read.data[read.size - 1] == 0x5A;
+    std::error_code ec;
+    std::filesystem::remove_all(dir, ec);
+    return roundtrip;
+}
+
 bool systemWallClockIsTrustedNow() {
     neripal::desktop::SystemWallClock wall;
     const auto now = wall.nowUnixSeconds();
@@ -590,6 +907,23 @@ int main() {
         {"file storage writes via temp and replace", fileStorageWritesViaTempAndReplace},
         {"file session save load cycle", fileSessionSaveLoadCycle},
         {"system wall clock is trusted now", systemWallClockIsTrustedNow},
+        {"v2 payload fits storage", v2PayloadFitsStorage},
+        {"codec v2 roundtrip", codecV2Roundtrip},
+        {"codec migrates v1 egg", codecMigratesV1Egg},
+        {"codec migrates v1 baby", codecMigratesV1Baby},
+        {"codec migrates v1 child", codecMigratesV1Child},
+        {"codec migrates v1 adult", codecMigratesV1Adult},
+        {"codec migrates v1 final", codecMigratesV1Final},
+        {"v1 bytes are not read as v2", v1BytesAreNotReadAsV2},
+        {"codec v2 rejects corrupt crc", codecV2RejectsCorruptCrc},
+        {"codec v2 rejects invalid form", codecV2RejectsInvalidForm},
+        {"codec v2 rejects invalid episode", codecV2RejectsInvalidEpisode},
+        {"codec v2 rejects invalid notice", codecV2RejectsInvalidNotice},
+        {"same snapshot detects new fields", sameSnapshotDetectsNewFields},
+        {"load adult does not reroll", loadAdultDoesNotReroll},
+        {"load final does not reroll", loadFinalDoesNotReroll},
+        {"notice survives save until confirmed", noticeSurvivesSaveUntilConfirmed},
+        {"file storage accepts v2 blob", fileStorageAcceptsV2Blob},
     };
 
     int failures = 0;

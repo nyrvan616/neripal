@@ -20,34 +20,29 @@ Para ver cada caso:
 ```powershell
 .\build\windows-debug\neripal_core_tests.exe
 .\build\windows-debug\neripal_ui_tests.exe
+.\build\windows-debug\neripal_persist_tests.exe
 ```
 
 ## Cobertura funcional actual
 
-- Feed, train, sleep, wake y clean con `CareResult` motivado.
-- Hygiene: clamp, decay despierto, Clean y efecto sobre felicidad/salud.
-- `Pet::apply` despacha `CareAction` sin duplicar reglas.
-- Restauración normaliza un snapshot inválido, incluida hygiene.
-- `XorShift32` produce una secuencia fija por semilla; `FakeRandom` reproduce
-  valores scripted y falla al agotarse; `nextBounded` usa una muestra por llamada.
-- Cuidado no consume RNG en stats. `update()` despierto puede Walk/Idle/Nap y sí
-  consume muestras; Egg y Sleep de jugador congelan el timer y no muestrean.
-- Evolución Egg → Baby → Child → Adult con edad controlada.
-- Menú 2x3, SLEEP/WAKE según snapshot, STATUS con barra HYG.
-- Overlay de feedback aparece y caduca con tiempo controlado.
-- Rechazo muestra el label del `CareResult` (ASLEEP/TIRED/RESTING/AWAKE).
-- `deriveMood` sigue una tabla de prioridad (Resting/Tired/Dirty/Annoyed/Happy/Calm);
-  Egg no pisa el mood; `PetState` no cachea el valor. El banner de Home/Status
-  traduce el enum (`DIRTY`/`TIRED`/`HAPPY`/`ANNOYED`/`RESTING`/`CALM`) o `WAITING`.
-- Idle/Walk/Nap: snapshot de `Activity`, decide timer, wander por distancia,
-  catch-up con remainder y tope de transiciones; el mismo elapsed total produce el
-  mismo `activity`/`x`/`facing`/`IdleVariant` aunque se parta en pasos distintos.
-- Care Applied → Eat/Happy/Sleep/Idle; `RejectedNoEnergy` → Tired; el resto de
-  rechazos no cambia activity. Flancos Dirty/Annoyed son one-shot.
-- `GameEvent`: `ActivityStarted`/`ActivityFinished` sin `Step`; `pollEvent()`
-  consume una vez; el anillo embebido no crece y, lleno, descarta el más viejo.
-- Eat/Dirty placeholder y walk en extremos permanecen dentro de 240x240.
-- Ausencia de etiquetas de debug en las vistas del dispositivo.
+CTest ejecuta tres binarios. El recuento del cierre 0.6 (158 + 29 + 46) está en
+`docs/MILESTONE_0.6.md`.
+
+- Feed, train, sleep, wake, clean, pet y play con `CareResult` motivado.
+- Cinco stats base, `needLevel()`, decay (higiene también dormida, más lenta) y
+  fórmulas provisionales de salud y felicidad.
+- Historial por etapa, ventana de care mistakes y entrenamiento solo con Train.
+- Etapas hasta Final. Child → Adult usa `EvolutionRules` y, si hay dos salidas,
+  un solo tiro de RNG que queda guardado.
+- Offline comparte `stepMinute` con el juego en vivo y no suma care mistakes.
+- `EvolutionNotice`: se muestra, se confirma en orden y confirmar no cambia etapa
+  ni forma. La UI no ejecuta las reglas.
+- Save V2, lectura de V1, migración, CRC y formas coherentes.
+- Menú de ocho ítems. Status muestra affection, stimulation, etapa y forma.
+- Normal no pinta aviso. Attention y Urgent comparten símbolo; Urgent es más intenso.
+- Final usa el mismo placeholder que Adult.
+- `DebugController::forceEvolution` no deja etapa y forma incoherentes.
+- `deriveMood`, autonomía, `GameEvent` y el viewport 240x240 siguen cubiertos.
 
 ## Pendiente
 

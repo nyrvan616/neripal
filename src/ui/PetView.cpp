@@ -4,6 +4,7 @@
 #include "neripal/core/Activity.hpp"
 #include "neripal/core/Balance.hpp"
 #include "neripal/core/Mood.hpp"
+#include "neripal/ui/NeedSignals.hpp"
 
 #include <algorithm>
 #include <array>
@@ -216,37 +217,68 @@ void drawCleanIcon(platform::IRenderer& r, int x, int y) {
     r.fillRect(x + 20, y + 14, 4, 4, kGold);
 }
 
+void drawPetIcon(platform::IRenderer& r, int x, int y) {
+    r.fillRect(x + 6, y + 6, 7, 7, kAlert);
+    r.fillRect(x + 15, y + 6, 7, 7, kAlert);
+    r.fillRect(x + 8, y + 12, 12, 6, kAlert);
+    r.fillRect(x + 11, y + 17, 6, 3, kAlert);
+}
+
+void drawPlayIcon(platform::IRenderer& r, int x, int y) {
+    r.fillRect(x + 8, y + 6, 12, 12, kEnergy);
+    r.drawRect(x + 8, y + 6, 12, 12, kOutline);
+    r.fillRect(x + 12, y + 9, 5, 6, kPanelLight);
+}
+
 std::pair<int, int> menuTileOrigin(int menuIndex) {
-    constexpr int kOriginX = 28;
+    constexpr int kColumns = 4;
+    constexpr int kOriginX = 20;
     constexpr int kOriginY = 76;
-    constexpr int kColSpacing = 68;
-    constexpr int kRowSpacing = 52;
-    return {kOriginX + (menuIndex % 3) * kColSpacing, kOriginY + (menuIndex / 3) * kRowSpacing};
+    constexpr int kColSpacing = 52;
+    constexpr int kRowSpacing = 48;
+    return {kOriginX + (menuIndex % kColumns) * kColSpacing,
+            kOriginY + (menuIndex / kColumns) * kRowSpacing};
 }
 
 void drawMenuIcon(platform::IRenderer& r, int menuIndex, bool sleeping) {
     const auto [x, y] = menuTileOrigin(menuIndex);
     switch (menuIndex) {
-        case 0: drawFeedIcon(r, x + 3, y + 2); break;
-        case 1: drawTrainIcon(r, x + 3, y + 2); break;
-        case 2: drawSleepIcon(r, x + 3, y + 2, sleeping); break;
-        case 3: drawCleanIcon(r, x + 3, y + 2); break;
-        case 4: drawStatsIcon(r, x + 3, y + 2); break;
-        case 5: drawHomeIcon(r, x + 3, y + 2); break;
+        case UiController::kMenuFeed: drawFeedIcon(r, x + 2, y + 2); break;
+        case UiController::kMenuTrain: drawTrainIcon(r, x + 2, y + 2); break;
+        case UiController::kMenuSleep: drawSleepIcon(r, x + 2, y + 2, sleeping); break;
+        case UiController::kMenuClean: drawCleanIcon(r, x + 2, y + 2); break;
+        case UiController::kMenuPet: drawPetIcon(r, x + 2, y + 2); break;
+        case UiController::kMenuPlay: drawPlayIcon(r, x + 2, y + 2); break;
+        case UiController::kMenuStatus: drawStatsIcon(r, x + 2, y + 2); break;
+        case UiController::kMenuHome: drawHomeIcon(r, x + 2, y + 2); break;
         default: break;
     }
 }
 
 const char* menuLabel(int menuIndex, bool sleeping) {
     switch (menuIndex) {
-        case 0: return "FEED";
-        case 1: return "TRAIN";
-        case 2: return sleeping ? "WAKE" : "SLEEP";
-        case 3: return "CLEAN";
-        case 4: return "STATUS";
-        case 5: return "HOME";
+        case UiController::kMenuFeed: return "FEED";
+        case UiController::kMenuTrain: return "TRAIN";
+        case UiController::kMenuSleep: return sleeping ? "WAKE" : "SLEEP";
+        case UiController::kMenuClean: return "CLEAN";
+        case UiController::kMenuPet: return "PET";
+        case UiController::kMenuPlay: return "PLAY";
+        case UiController::kMenuStatus: return "STATUS";
+        case UiController::kMenuHome: return "HOME";
         default: return "";
     }
+}
+
+const char* formLabel(core::FormId form) {
+    switch (form) {
+        case core::FormId::None: return "NONE";
+        case core::FormId::Juvenile: return "JUVENILE";
+        case core::FormId::AdultA: return "ADULT-A";
+        case core::FormId::AdultB: return "ADULT-B";
+        case core::FormId::AdultC: return "ADULT-C";
+        case core::FormId::AdultSecret: return "SECRET";
+    }
+    return "NONE";
 }
 
 const char* stageLabel(core::EvolutionStage stage) {
@@ -327,11 +359,89 @@ void drawCareOverlay(platform::IRenderer& r, const UiState& uiState) {
             r.fillRect(150, 118, 4, 4, kPanelLight);
             break;
         case core::CareAction::Pet:
+            r.fillRect(150, 96, 6, 6, kAlert);
+            r.fillRect(158, 96, 6, 6, kAlert);
+            r.fillRect(150, 100, 14, 6, kAlert);
+            break;
         case core::CareAction::Play:
+            r.fillRect(148, 100, 12, 12, kEnergy);
+            r.drawRect(148, 100, 12, 12, kOutline);
             break;
     }
     drawPanel(r, 154, 36, 62, 24, kPanel);
     r.drawText(162, 44, appliedLabel(uiState.careAction), kInk);
+}
+
+void drawNeedGlyph(platform::IRenderer& r, int x, int y, core::Need need) {
+    switch (need) {
+        case core::Need::Hunger:
+            r.fillRect(x + 2, y + 8, 14, 4, kInk);
+            r.fillRect(x + 4, y + 4, 3, 6, kInk);
+            r.fillRect(x + 11, y + 4, 3, 6, kInk);
+            break;
+        case core::Need::Energy:
+            r.fillRect(x + 8, y + 1, 4, 5, kInk);
+            r.fillRect(x + 5, y + 6, 4, 5, kInk);
+            r.fillRect(x + 8, y + 11, 4, 5, kInk);
+            break;
+        case core::Need::Hygiene:
+            r.fillRect(x + 7, y + 2, 4, 4, kInk);
+            r.fillRect(x + 5, y + 6, 8, 4, kInk);
+            r.fillRect(x + 6, y + 10, 6, 4, kInk);
+            break;
+        case core::Need::Affection:
+            r.fillRect(x + 2, y + 4, 6, 6, kInk);
+            r.fillRect(x + 10, y + 4, 6, 6, kInk);
+            r.fillRect(x + 5, y + 9, 8, 5, kInk);
+            break;
+        case core::Need::Stimulation:
+            r.fillRect(x + 7, y + 2, 4, 12, kInk);
+            r.fillRect(x + 3, y + 6, 12, 4, kInk);
+            break;
+    }
+}
+
+void drawNeedSignals(platform::IRenderer& r, const core::PetState& state) {
+    const NeedSignalList signals = needSignals(state);
+    constexpr int kStep = 44;
+    int x = 12;
+    for (std::uint8_t i = 0; i < signals.count; ++i) {
+        const NeedSignal& signal = signals.items[i];
+        const bool urgent = signal.level == core::NeedLevel::Urgent;
+        drawNeedGlyph(r, x, 30, signal.need);
+        r.drawText(x + 18, 32, needSymbol(signal.need), kInk);
+        if (urgent) {
+            drawNeedGlyph(r, x + 1, 31, signal.need);
+            r.drawRect(x - 2, 28, 40, 18, kOutline);
+            r.drawRect(x - 4, 26, 44, 22, kOutline);
+            r.drawText(x + 18, 42, "!", kInk);
+        } else {
+            r.drawRect(x - 2, 28, 40, 18, kOutline);
+        }
+        x += kStep;
+    }
+}
+
+void drawEvolutionNotice(platform::IRenderer& r, const UiState& uiState) {
+    if (!uiState.evolutionNoticeVisible) return;
+    drawPanel(r, 24, 64, 192, 112, kPanel);
+    r.drawText(40, 76, "EVOLVED", kInk, 2);
+    char transition[24]{};
+    std::snprintf(transition, sizeof(transition), "%s > %s", stageLabel(uiState.evolutionFrom),
+                  stageLabel(uiState.evolutionTo));
+    r.drawText(40, 100, transition, kInk);
+    r.drawText(40, 116, "FORM", kInk);
+    r.drawText(100, 116, formLabel(uiState.evolutionForm), kInk);
+    r.drawText(40, 148, "B CONFIRM", kInk);
+}
+
+platform::Color needBarColor(core::Need need, int value, platform::Color normal) {
+    switch (core::needLevel(need, value)) {
+        case core::NeedLevel::Urgent: return kAlert;
+        case core::NeedLevel::Attention: return kGold;
+        case core::NeedLevel::Normal: return normal;
+    }
+    return normal;
 }
 }
 
@@ -435,6 +545,7 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
                 : 0;
         const int petX = std::clamp(state.x, 0, platform::IRenderer::kLogicalWidth - 64);
         drawPet(r, petX, 67, uiState.idleFrame, extraBob, state);
+        drawNeedSignals(r, state);
         drawCareOverlay(r, uiState);
         drawPanel(r, 57, 143, 126, 29, kPanel);
         const char* banner = nullptr;
@@ -462,11 +573,11 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
         const float t = uiState.menuSelectionProgress;
         const int highlightX = fromX + static_cast<int>((toX - fromX) * t);
         const int highlightY = fromY + static_cast<int>((toY - fromY) * t);
-        drawPanel(r, highlightX - 4, highlightY - 4, 58, 46, kGold, kGold);
+        drawPanel(r, highlightX - 2, highlightY - 2, 48, 42, kGold, kGold);
         for (int menuIndex = 0; menuIndex < UiController::kMenuItemCount; ++menuIndex) {
             drawMenuIcon(r, menuIndex, state.sleeping);
             const auto [labelX, labelY] = menuTileOrigin(menuIndex);
-            r.drawText(labelX + 2, labelY + 34, menuLabel(menuIndex, state.sleeping), kInk);
+            r.drawText(labelX, labelY + 26, menuLabel(menuIndex, state.sleeping), kInk);
         }
         r.fillRect(0, 207, 240, 33, kOutline);
         r.drawText(28, 216, "A NEXT", kPanelLight);
@@ -478,24 +589,30 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
         drawPanel(r, 10, 39, 220, 157, kPanel);
         r.drawText(23, 49, "VITAL SIGNS", kInk, 2);
         drawPanel(r, 19, 71, 119, 125, kPanelLight, kPurple);
-        drawStat(r, 76, "HUN", state.hunger,
-                 state.hunger >= core::balance::kAnnoyedMoodHunger ? kAlert : kHappy);
-        drawStat(r, 94, "HAP", state.happiness, kHappy);
-        drawStat(r, 112, "ENG", state.energy, kEnergy);
-        drawStat(r, 130, "HP ", state.health,
+        drawStat(r, 78, "HUN", state.hunger, needBarColor(core::Need::Hunger, state.hunger, kHappy));
+        drawStat(r, 90, "NRG", state.energy, needBarColor(core::Need::Energy, state.energy, kEnergy));
+        drawStat(r, 102, "HYG", state.hygiene,
+                 needBarColor(core::Need::Hygiene, state.hygiene, kPetLight));
+        drawStat(r, 114, "AFE", state.affection,
+                 needBarColor(core::Need::Affection, state.affection, kPetMain));
+        drawStat(r, 126, "STM", state.stimulation,
+                 needBarColor(core::Need::Stimulation, state.stimulation, kEnergy));
+        drawStat(r, 138, "HAP", state.happiness, kHappy);
+        drawStat(r, 150, "HP", state.health,
                  state.health < core::balance::kAnnoyedMoodHealth ? kAlert : kGrass);
-        drawStat(r, 148, "HYG", state.hygiene,
-                 state.hygiene <= core::balance::kHygieneNeglectThreshold ? kAlert : kPetLight);
-        r.drawText(150, 76, stageLabel(state.stage), kInk);
-        drawPet(r, 151, 88, uiState.idleFrame, 0, state);
-        r.drawText(153, 163, careMoodBanner(state), kInk);
+        r.drawText(148, 80, "STAGE", kInk);
+        r.drawText(148, 94, stageLabel(state.stage), kInk);
+        r.drawText(148, 116, "FORM", kInk);
+        r.drawText(148, 130, formLabel(state.form), kInk);
+        r.drawText(148, 156, careMoodBanner(state), kInk);
         char age[18]{};
         std::snprintf(age, sizeof(age), "AGE %llum",
                       static_cast<unsigned long long>(state.ageMillis / 60'000));
-        r.drawText(153, 176, age, kInk);
+        r.drawText(148, 172, age, kInk);
         r.fillRect(0, 207, 240, 33, kOutline);
         r.drawText(81, 219, "C  BACK", kPanelLight, 2);
     }
+    drawEvolutionNotice(r, uiState);
     r.endFrame();
 }
 

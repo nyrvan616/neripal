@@ -3,6 +3,8 @@
 #include "neripal/core/Pet.hpp"
 #include "neripal/core/XorShift32.hpp"
 #include "neripal/persist/SaveSession.hpp"
+#include "neripal/core/EvolutionNotice.hpp"
+#include "neripal/ui/NeedSignals.hpp"
 #include "neripal/ui/PetView.hpp"
 #include "neripal/ui/UiController.hpp"
 #include "platform/desktop/DesktopPlatform.hpp"
@@ -90,6 +92,8 @@ int main(int argc, char* argv[]) {
                 case 'S': pet.state().sleeping ? debug.wake() : debug.sleep(); break;
                 case 'W': debug.wake(); break;
                 case 'L': debug.clean(); break;
+                case 'P': debug.pet(); break;
+                case 'Y': debug.play(); break;
                 case 'R': debug.reset(); break;
                 case '1': debug.setTimeScale(1); break;
                 case '2': debug.setTimeScale(10); break;
@@ -97,7 +101,10 @@ int main(int argc, char* argv[]) {
                 case '4': debug.setTimeScale(1000); break;
                 case 'A': debug.advanceMinutes(60); break;
                 case 'E': debug.forceEvolution(); break;
-                case VK_TAB: selectedStat = (selectedStat + 1) % 5; break;
+                case VK_TAB:
+                    selectedStat = (selectedStat + 1) %
+                                   neripal::simulator::DebugController::kDebugStatCount;
+                    break;
                 case VK_UP: debug.adjustStat(selectedStat, 5); break;
                 case VK_DOWN: debug.adjustStat(selectedStat, -5); break;
                 case VK_HOME: debug.adjustStat(selectedStat, 100); break;
@@ -109,6 +116,15 @@ int main(int argc, char* argv[]) {
         while (const auto action = platform.pollAction()) {
             ui.handleInput(*action, pet.state());
         }
+        if (ui.takeEvolutionConfirm()) {
+            pet.confirmEvolutionNotice();
+        }
+        if (!ui.showingEvolutionNotice()) {
+            neripal::core::EvolutionNotice notice;
+            if (pet.peekEvolutionNotice(notice)) {
+                ui.presentEvolutionNotice(notice);
+            }
+        }
         if (const auto care = ui.takeCareAction()) {
             const auto result = pet.apply(*care);
             saves.noteCareResult(result);
@@ -118,8 +134,23 @@ int main(int argc, char* argv[]) {
         ui.update(clock.nowMillis());
         saves.tick();
 
-        static constexpr std::array<std::string_view, 5> kStatNames{
-            "HUNGER", "HAPPINESS", "ENERGY", "HEALTH", "HYGIENE"};
+        static constexpr std::array<std::string_view, 7> kStatNames{
+            "HUNGER", "HAPPINESS", "ENERGY", "HEALTH", "HYGIENE", "AFFECTION", "STIMULATION"};
+        const auto signals = neripal::ui::needSignals(pet.state());
+        std::string needs = "NEEDS";
+        for (std::uint8_t i = 0; i < signals.count; ++i) {
+            needs += " ";
+            needs += neripal::ui::needSymbol(signals.items[i].need);
+            if (signals.items[i].level == neripal::core::NeedLevel::Urgent) needs += "!";
+        }
+        if (signals.count == 0) needs += " ok";
+        neripal::core::EvolutionNotice pending{};
+        const bool hasNotice = pet.peekEvolutionNotice(pending);
+        std::string noticeLine = "NOTICE " + std::to_string(pet.pendingEvolutionNotices());
+        if (hasNotice) {
+            noticeLine += " queued";
+        }
+        const bool urgentSoundCue = neripal::ui::urgentSoundRequested(pet.state());
         platform.setDebugLines({
             "DEVICE CONTROLS",
             "Z/RIGHT  next",
@@ -134,11 +165,15 @@ int main(int argc, char* argv[]) {
             "Up/Down  +/-5",
             "Home/End  max/min",
             "",
+            needs,
+            noticeLine,
+            std::string(urgentSoundCue ? "SOUND cue" : "SOUND off"),
             "F feed   T train",
             "S sleep  W wake",
-            "L clean  R reset",
+            "L clean  P pet",
+            "Y play   R reset",
             "A +1 hour",
-            "E force evolution",
+            "E force stage/form",
             "1-4 time scale",
         });
         view.render(platform, pet.state(), ui.state());

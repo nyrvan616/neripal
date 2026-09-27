@@ -15,13 +15,6 @@ SaveSession::SaveSession(core::Pet& pet, ISaveStorage& storage, IWallClock& wall
                          core::IClock& sessionClock)
     : pet_(pet), storage_(storage), wallClock_(wallClock), sessionClock_(sessionClock) {}
 
-bool SaveSession::sameSnapshot(const core::PetSnapshot& a, const core::PetSnapshot& b) noexcept {
-    return a.hunger == b.hunger && a.happiness == b.happiness && a.energy == b.energy &&
-           a.health == b.health && a.hygiene == b.hygiene && a.ageMillis == b.ageMillis &&
-           a.needsRemainderMs == b.needsRemainderMs && a.stage == b.stage &&
-           a.sleepCause == b.sleepCause && a.napRemainingMs == b.napRemainingMs;
-}
-
 std::uint64_t SaveSession::gapMillis(std::int64_t from, std::int64_t to) noexcept {
     if (to <= from) {
         return 0;
@@ -78,7 +71,7 @@ bool SaveSession::writeRecord() {
 
     SaveBytes bytes{};
     std::uint16_t written = 0;
-    if (!encodeV1(record, bytes.data, kSaveBlobCapacity, written)) {
+    if (!encodeV2(record, bytes.data, kSaveBlobCapacity, written)) {
         return false;
     }
     bytes.size = written;
