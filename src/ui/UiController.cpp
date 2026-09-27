@@ -6,13 +6,6 @@ namespace neripal::ui {
 namespace {
 constexpr std::uint64_t kIdleFrameMillis = 500;
 constexpr std::uint64_t kMenuSelectionMillis = 120;
-
-constexpr int kMenuFeed = 0;
-constexpr int kMenuTrain = 1;
-constexpr int kMenuSleep = 2;
-constexpr int kMenuClean = 3;
-constexpr int kMenuStatus = 4;
-constexpr int kMenuHome = 5;
 }
 
 void UiController::openMenu() {
@@ -47,6 +40,14 @@ void UiController::confirmMenuSelection(const core::PetState& petState) {
             pendingCareAction_ = core::CareAction::Clean;
             state_.screen = Screen::Home;
             break;
+        case kMenuPet:
+            pendingCareAction_ = core::CareAction::Pet;
+            state_.screen = Screen::Home;
+            break;
+        case kMenuPlay:
+            pendingCareAction_ = core::CareAction::Play;
+            state_.screen = Screen::Home;
+            break;
         case kMenuStatus:
             state_.screen = Screen::Status;
             break;
@@ -58,7 +59,28 @@ void UiController::confirmMenuSelection(const core::PetState& petState) {
     }
 }
 
+void UiController::presentEvolutionNotice(const core::EvolutionNotice& notice) {
+    if (state_.evolutionNoticeVisible) return;
+    state_.evolutionNoticeVisible = true;
+    state_.evolutionFrom = notice.from;
+    state_.evolutionTo = notice.to;
+    state_.evolutionForm = notice.form;
+}
+
+bool UiController::takeEvolutionConfirm() {
+    if (!pendingEvolutionConfirm_) return false;
+    pendingEvolutionConfirm_ = false;
+    state_.evolutionNoticeVisible = false;
+    return true;
+}
+
 void UiController::handleInput(platform::InputAction action, const core::PetState& petState) {
+    if (state_.evolutionNoticeVisible) {
+        if (action == platform::InputAction::Confirm) {
+            pendingEvolutionConfirm_ = true;
+        }
+        return;
+    }
     switch (state_.screen) {
         case Screen::Home:
             if (action == platform::InputAction::Confirm) openMenu();

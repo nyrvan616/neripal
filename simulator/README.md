@@ -40,20 +40,25 @@ El panel lateral de debug muestra las herramientas y conserva estos atajos:
 | `F`, `T` | Feed, train |
 | `S`, `W` | Alternar sueño, despertar |
 | `L` | Clean |
+| `P`, `Y` | Pet, play |
 | `R` | Reset completo del Pet |
 | `1` a `4` | Velocidad x1, x10, x100, x1000 |
 | `A` | Avanzar una hora simulada |
-| `E` | Forzar la siguiente evolución visual |
-| `Tab` | Cambiar stat seleccionado |
+| `E` | Forzar la etapa siguiente y una forma coherente. No ejecuta `EvolutionRules` |
+| `Tab` | Cambiar stat: hambre, felicidad, energía, salud, higiene, affection, stimulation |
 | `Up`, `Down` | Ajustar ±5 |
 | `Home`, `End` | Ajustar a 100 o 0 |
 
 ## Separación de debug
 
 `simulator/debug/DebugController` se compila únicamente dentro del ejecutable de
-desktop. Para editar stats toma un `PetState`, lo modifica y llama a la operación
-normal `Pet::restore()`. El firmware no compila este directorio y el API público de
-`Pet` no contiene métodos exclusivos de debug.
+desktop. Para editar stats toma el estado, lo modifica y llama a `Pet::restore()`.
+`forceEvolution` usa esa misma vía: escribe etapa y forma, y no representa el
+juego. El firmware no compila este directorio y el API público de `Pet` no
+contiene métodos exclusivos de debug.
+
+La partida se guarda junto al ejecutable, en `neripal-slot0.bin` y
+`neripal-slot1.bin`. Al salir, el simulador intenta escribir el save.
 
 Para iniciar una sesión paso a paso con VS Code o GDB, consultar
 [`../docs/DEVELOPMENT.md`](../docs/DEVELOPMENT.md#depurar-el-simulador).

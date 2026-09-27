@@ -1,6 +1,7 @@
 # WaveshareS3Platform
 
-Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.4.0.
+Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54. El cierre de juego
+vigente es 0.6; esta página describe solo la plataforma.
 
 ## Implementado
 
@@ -11,14 +12,16 @@ Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54 en NeriPal 0.4.0.
 - Identificación de versión por Serial; `PetView` muestra la misma versión en UI.
 - Contratos `IInput` e `IRenderer` completos a nivel de compilación.
 - `XorShift32` inyectado en el composition root con un placeholder de seed
-  (`kFirmwareRngSeedPlaceholder`). No es política de producto ni el valor `1`;
-  ADC / `esp_random` / NVS quedan para HAL/persistencia.
+  (`kFirmwareRngSeedPlaceholder`). No es política de producto ni el valor `1`.
+  La entropía real (ADC o `esp_random`) sigue pendiente.
+- Save en NVS: `NvsSaveStorage`, namespace `neripal`, claves `slot0` y `slot1`.
+  Escribe V2 y lee V1. `Esp32WallClock` alimenta el tiempo offline.
 - Target PlatformIO N16R8: flash de 16 MB, PSRAM octal y particiones OTA.
 
 ## Stub deliberado
 
-Las operaciones de `IRenderer` aceptan frames y primitivas pero hoy son no-op. El
-firmware compila y ejecuta Core/UI, aunque no muestra la mascota en la pantalla.
+`beginFrame`, `fillRect`, `drawRect`, `drawText` y `endFrame` están vacíos. El
+firmware compila y ejecuta Core, save y UI, aunque no muestra nada en el LCD.
 
 ## Pendiente de implementación física
 

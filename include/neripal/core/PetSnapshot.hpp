@@ -1,6 +1,8 @@
 #pragma once
 
-#include "neripal/core/Evolution.hpp"
+#include "neripal/core/Balance.hpp"
+#include "neripal/core/CareHistory.hpp"
+#include "neripal/core/EvolutionNotice.hpp"
 #include "neripal/core/SleepCause.hpp"
 
 #include <cstdint>
@@ -14,11 +16,18 @@ struct PetSnapshot {
     int energy = 80;
     int health = 100;
     int hygiene = 80;
+    int affection = balance::kAffectionStart;
+    int stimulation = balance::kStimulationStart;
     std::uint64_t ageMillis = 0;
     std::uint32_t needsRemainderMs = 0;
-    EvolutionStage stage = EvolutionStage::Baby;
+    std::uint8_t needsStepPhase = 0;
+    EvolutionStage stage = EvolutionStage::Egg;
+    FormId form = FormId::None;
     SleepCause sleepCause = SleepCause::None;
     std::uint32_t napRemainingMs = 0;
+    CareRecord care{};
+    EvolutionNotice notices[kEvolutionNoticeCapacity]{};
+    std::uint8_t noticeCount = 0;
 };
 
 // If energy reaches kNapWakeEnergy before napRemainingMs elapses, Nap ends and

@@ -1,9 +1,13 @@
-# NeriPal 0.4.0
+# NeriPal
 
 Mascota virtual retro-moderna para Windows y la placa Waveshare
 ESP32-S3-Touch-LCD-1.54. El proyecto comparte un Game Core C++17 entre el
 simulador y el firmware, con presentación 240x240, tiempo inyectable y tests
 deterministas.
+
+El cierre vigente es la milestone 0.6 (ciclo evolutivo). El rótulo que imprime
+el programa sigue siendo `0.4.0`: `include/neripal/Version.hpp` y
+`project(NeriPal VERSION 0.4.0)` no se cambiaron en ese cierre.
 
 NeriPal está preparado como un repositorio independiente. No necesita el
 directorio que lo contiene ni repositorios hermanos. En esta documentación,
@@ -14,48 +18,45 @@ directorio que lo contiene ni repositorios hermanos. En esta documentación,
 
 | Área | Estado | Alcance actual |
 |---|---|---|
-| Game Core | Operativo | Crianza 0.3 + Autonomy (Idle/Walk/Nap), `deriveMood`, `GameEvent` |
-| Simulador Windows | Operativo | Menú de cuidado 240x240, mascota que camina sola, Debug Tools laterales |
-| UI V-Pet | Operativa | Home con X/facing, Eat/Dirty/Annoyed placeholder, overlays |
-| Tests | Operativos | Core + UI deterministas (`FakeClock`, `FakeRandom`) |
-| Build ESP32-S3 | Operativo | Firmware compilable; seed RNG inyectada en el root |
-| HAL Waveshare | Base parcial | Reloj, power-hold, backlight y tres botones |
-| Display/touch/audio/IMU | Pendiente | Pinout documentado; ST7789 sigue stub |
+| Game Core | Operativo | Necesidades, historial, etapas hasta Final, reglas fixture, offline |
+| Simulador Windows | Operativo | Menú de 8 ítems, evolución, save en disco, Debug Tools laterales |
+| UI V-Pet | Operativa en host | Home, Status, señales de necesidad y aviso de evolución |
+| Tests | Operativos | Core, UI y persistencia (`FakeClock`, `FakeRandom`) |
+| Build ESP32-S3 | Operativo | Mismo loop que el host; save NVS; seed RNG aún placeholder |
+| HAL Waveshare | Base parcial | Reloj, power-hold, backlight, tres botones y NVS |
+| Display/touch/audio/IMU | Pendiente | `IRenderer` completo sigue vacío, `drawText` incluido |
 
-Esta versión hace que la mascota se sienta viva en el dispositivo lógico. No está
-lista para una demo visual sobre la placa física: el renderer ST7789 no dibuja.
+0.6 está verificada en host, tests y build de firmware. No está lista para una
+demo visual en la placa: el renderer no dibuja en el LCD.
 
-El cierre de 0.4 está en [`docs/MILESTONE_0.4.md`](docs/MILESTONE_0.4.md). El de
-0.3 permanece en [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md). El diagnóstico
-histórico de 0.1 está en [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md).
+El cierre de 0.6 está en [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md). Los de
+0.4 y 0.3, y el diagnóstico de 0.1, quedan como historia en `docs/`.
 
 ## Funcionalidad disponible
 
-- `PetState`: stats, edad, sueño, etapa y snapshot de activity (`x`, facing, elapsed).
-- Acciones de cuidado: feed, train, sleep, wake, clean, con rechazos motivados.
-- Autonomía: Idle (variantes por mood), Walk 1D, Nap si la energía es crítica.
-- Reacciones: Eat, Happy, Tired, Dirty, Annoyed; Sleep visual con Z.
-- `deriveMood` como única fuente de ánimo; `pollEvent()` one-shot de activity.
-- Menú de dispositivo: FEED, TRAIN, SLEEP/WAKE, CLEAN, STATUS, HOME.
-- Overlays de feedback (~900 ms) según `CareResult`, dentro de 240x240.
-- Degradación temporal: hambre, energía, hygiene en vigilia, felicidad y salud.
-- Evolución mínima por edad: Egg (preview), Baby, Child y Adult.
-- Reloj desktop acelerable x1, x10, x100 y x1000.
-- RNG inyectado (`XorShift32`) desde el composition root; tests con `FakeRandom`.
-- Debug Tools fuera del viewport: stats (incl. hygiene), L=clean, sin setters en Pet.
-- Firmware con el mismo cableado de cuidado que el simulador; sin DebugController.
-- Versión visible en la cabecera del juego, consola desktop y Serial del ESP32.
+- `PetState`: cinco stats base, salud, felicidad, edad, sueño, etapa, forma y pose.
+- Acciones: feed, train, sleep, wake, clean, pet y play, con rechazos motivados.
+- Autonomía: Idle, Walk 1D, Nap, y reacciones Eat, Happy, Tired, Dirty, Annoyed.
+- Etapas Egg → Baby → Child → Adult → Final. La edad abre la etapa; el historial elige la forma fixture en Child → Adult.
+- `EvolutionNotice` persistente. Confirmarlo no cambia etapa ni forma.
+- Save V2 en el simulador (`neripal-slot0.bin` / `neripal-slot1.bin`) y NVS en firmware. Lectura y migración de V1.
+- Tiempo apagado: necesidades y edad avanzan; los care mistakes no se generan offline.
+- Menú: FEED, TRAIN, SLEEP/WAKE, CLEAN, PET, PLAY, STATUS, HOME.
+- Home muestra solo necesidades que no están en Normal. Status muestra los números, la etapa y el identificador de forma.
+- Reloj desktop x1, x10, x100 y x1000. RNG inyectado desde el composition root.
+- Debug Tools fuera del viewport. `E` fuerza etapa y forma coherente y no ejecuta las reglas de juego.
+- Firmware con el mismo cableado de cuidado y de avisos que el simulador, sin `DebugController`.
 
 ## No incluido todavía
 
 - Render real en ST7789 y lectura CST816T.
-- Persistencia, recuperación del tiempo apagado o versionado de saves.
-- Enfermedad completa, medicina, muerte, poop, día/noche.
-- Audio ES8311, IMU QMI8658 y medición/calibración de batería.
+- Enfermedad, medicina, muerte, despedida, nuevo huevo y ciclo completo.
+- Consecuencias de sobrealimentación o sobreentrenamiento, personalidad y entorno.
+- Audio real. El gancho de aviso urgente existe y no reproduce sonido.
+- Formas, sprites y reglas evolutivas definitivos. AdultA/B/C/Secret son fixtures.
+- IMU QMI8658, medición de batería y SD.
 - Wi-Fi gameplay, ESP-NOW, combate, multiplayer, tienda o inventario.
-- Evolución ramificada o minijuegos.
-- Assets visuales finales y pipeline de sprites.
-- CI, tests contractuales de HAL y validación sobre hardware físico.
+- CI, tests contractuales de HAL y validación de la UI sobre hardware físico.
 
 ## Requisitos en Windows
 
@@ -118,7 +119,7 @@ firmware y solución de problemas están reunidos en
 | Tecla | Acción |
 |---|---|
 | `Z` / `Right` | Siguiente opción del dispositivo |
-| `X` / `Enter` | Confirmar (FEED/TRAIN/SLEEP/CLEAN aplican al Pet) |
+| `X` / `Enter` | Confirmar (las acciones de cuidado aplican al Pet; un aviso de evolución se confirma) |
 | `C` / `Backspace` | Volver |
 | `Esc` | Salir |
 
@@ -129,11 +130,12 @@ El panel lateral de debug conserva estas herramientas de desarrollo:
 | `F`, `T` | Alimentar, entrenar |
 | `S`, `W` | Dormir/despertar |
 | `L` | Limpiar |
+| `P`, `Y` | Acariciar, jugar |
 | `R` | Reset |
 | `1`, `2`, `3`, `4` | Tiempo x1, x10, x100, x1000 |
 | `A` | Avanzar una hora simulada |
-| `E` | Forzar la siguiente evolución visual |
-| `Tab` | Seleccionar stat (incluye hygiene) |
+| `E` | Forzar la etapa siguiente y una forma coherente (no es el motor de reglas) |
+| `Tab` | Seleccionar stat (hambre, felicidad, energía, salud, higiene, affection, stimulation) |
 | `Up` / `Down` | Cambiar stat seleccionado ±5 |
 | `Home` / `End` | Llevar stat a 100/0 |
 
@@ -145,13 +147,15 @@ Más detalles en [`simulator/README.md`](simulator/README.md).
 include/neripal/           API pública de Core, UI y contratos HAL
 src/core/                  reglas puras de juego
 src/ui/                    presentación lógica 240x240
-src/platform/desktop/      ventana, input y reloj Windows
-src/platform/waveshare_s3/ HAL y composition root ESP32
+src/persist/               codec y sesión de save
+src/platform/desktop/      ventana, input, reloj y save en disco
+src/platform/waveshare_s3/ HAL, NVS y composition root ESP32
 simulator/debug/           herramientas exclusivas de desarrollo
-tests/unit/core/           tests host y FakeClock
-tests/unit/ui/             tests de navegación, overlays y viewport
-assets/placeholders/       reserva para arte original
-docs/                      arquitectura, desarrollo, hardware y diagnóstico
+tests/unit/core/           tests de juego
+tests/unit/ui/             tests de presentación
+tests/unit/persist/        tests de save
+assets/placeholders/       reserva para arte original; 0.6 sigue en rectángulos
+docs/                      arquitectura, desarrollo, hardware y cierres
 ```
 
 ## Documentación
@@ -160,14 +164,15 @@ docs/                      arquitectura, desarrollo, hardware y diagnóstico
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): capas y dependencias.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): compilación, ejecución, tests y debug.
 - [`docs/HARDWARE.md`](docs/HARDWARE.md): configuración, pinout y estado de la HAL.
-- [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md): cierre de la 0.3.
+- [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md): cierre vigente del ciclo evolutivo.
+- [`docs/MILESTONE_0.4.md`](docs/MILESTONE_0.4.md) y [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md): cierres históricos.
 - [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md): diagnóstico histórico de la 0.1.
 - [`tests/README.md`](tests/README.md): alcance de pruebas.
 - [`src/platform/waveshare_s3/README.md`](src/platform/waveshare_s3/README.md): estado real de la HAL.
 
-## Próximo hito recomendado
+## Próximo trabajo
 
-Implementar `IRenderer` sobre ST7789 con Arduino_GFX, manteniendo intactos Core y
-`PetView`; después integrar CST816T y validar físicamente rotación, inversión,
-touch, PSRAM y batería. El comportamiento autónomo del roadmap 0.4 no forma parte
-de esta entrega.
+El ciclo de 0.7 (enfermedad, envejecimiento, muerte y reglas definitivas) no está
+empezado. Antes de una demo en placa hace falta un `IRenderer` real sobre ST7789
+y una pasada física de la UI de 0.6. El detalle de lo pendiente está en
+[`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md).

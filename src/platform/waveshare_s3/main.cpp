@@ -4,6 +4,8 @@
 #include "neripal/core/Pet.hpp"
 #include "neripal/core/XorShift32.hpp"
 #include "neripal/persist/SaveSession.hpp"
+#include "neripal/core/EvolutionNotice.hpp"
+#include "neripal/ui/NeedSignals.hpp"
 #include "neripal/ui/PetView.hpp"
 #include "neripal/ui/UiController.hpp"
 
@@ -25,6 +27,8 @@ neripal::persist::SaveSession saves(pet, storage, wallClock, sessionClock);
 neripal::waveshare_s3::WaveshareS3Platform platform;
 neripal::ui::PetView view;
 neripal::ui::UiController ui;
+// Read by a future buzzer. Home glyphs are the mandatory urgent signal.
+volatile bool urgentSoundCue = false;
 
 const char* bootLabel(neripal::persist::BootResult result) {
     switch (result) {
@@ -55,11 +59,22 @@ void loop() {
     while (const auto action = platform.pollAction()) {
         ui.handleInput(*action, pet.state());
     }
+    if (ui.takeEvolutionConfirm()) {
+        pet.confirmEvolutionNotice();
+    }
+    if (!ui.showingEvolutionNotice()) {
+        neripal::core::EvolutionNotice notice;
+        if (pet.peekEvolutionNotice(notice)) {
+            ui.presentEvolutionNotice(notice);
+        }
+    }
     if (const auto care = ui.takeCareAction()) {
         const auto result = pet.apply(*care);
         saves.noteCareResult(result);
         ui.beginCareFeedback(*care, result, gameClock.nowMillis());
     }
+    urgentSoundCue = neripal::ui::urgentSoundRequested(pet.state());
+    (void)urgentSoundCue;
     pet.update();
     ui.update(gameClock.nowMillis());
     saves.tick();

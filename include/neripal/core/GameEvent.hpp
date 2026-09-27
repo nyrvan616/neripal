@@ -9,6 +9,7 @@ namespace neripal::core {
 enum class GameEventKind : std::uint8_t {
     ActivityStarted,
     ActivityFinished,
+    Hatched,  // birth edge; Egg is the stage, Hatched is not
 };
 
 // Consume-once activity edge. There is no Step kind: presentation reads pose

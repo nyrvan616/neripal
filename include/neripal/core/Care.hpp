@@ -8,6 +8,8 @@ enum class CareAction {
     Sleep,
     Wake,
     Clean,
+    Pet,
+    Play,
 };
 
 enum class CareResult {
@@ -16,6 +18,7 @@ enum class CareResult {
     RejectedNoEnergy,
     RejectedAlreadySleeping,
     RejectedAlreadyAwake,
+    RejectedEgg,
 };
 
 }  // namespace neripal::core

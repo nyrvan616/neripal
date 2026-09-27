@@ -22,13 +22,21 @@ public:
     void setEnergy(int value);
     void setHealth(int value);
     void setHygiene(int value);
+    // 0 hunger, 1 happiness, 2 energy, 3 health, 4 hygiene, 5 affection, 6 stimulation.
+    // restore() clamps the result. Happiness and health are not base needs.
+    static constexpr int kDebugStatCount = 7;
     void adjustStat(int index, int delta);
     void feed() { saves_.noteCareResult(pet_.feed()); }
     void train() { saves_.noteCareResult(pet_.train()); }
     void sleep() { saves_.noteCareResult(pet_.sleep()); }
     void wake() { saves_.noteCareResult(pet_.wake()); }
     void clean() { saves_.noteCareResult(pet_.clean()); }
+    void pet() { saves_.noteCareResult(pet_.pet()); }
+    void play() { saves_.noteCareResult(pet_.play()); }
     void reset();
+    // Writes the next stage and a coherent form through restore(). It does not
+    // run EvolutionRules and is not gameplay. restore() also drops pending
+    // evolution notices and care episodes.
     void forceEvolution();
 
 private:
