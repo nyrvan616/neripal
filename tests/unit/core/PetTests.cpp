@@ -6,6 +6,7 @@
 #include "neripal/core/Care.hpp"
 #include "neripal/core/GameEvent.hpp"
 #include "neripal/core/Mood.hpp"
+#include "neripal/core/Needs.hpp"
 #include "neripal/core/Pet.hpp"
 #include "neripal/core/PetSnapshot.hpp"
 #include "neripal/core/SleepCause.hpp"
@@ -38,7 +39,8 @@ struct TestCase { std::string_view name; std::function<bool()> run; };
 
 bool sameCareStats(const PetState& a, const PetState& b) {
     return a.hunger == b.hunger && a.happiness == b.happiness && a.energy == b.energy &&
-           a.health == b.health && a.hygiene == b.hygiene && a.sleeping == b.sleeping;
+           a.health == b.health && a.hygiene == b.hygiene && a.affection == b.affection &&
+           a.stimulation == b.stimulation && a.sleeping == b.sleeping;
 }
 
 bool sameAutonomySnapshot(const PetState& a, const PetState& b) {
@@ -123,12 +125,15 @@ bool restoreNormalizesEveryStat() {
     invalid.energy = -50;
     invalid.health = 800;
     invalid.hygiene = 200;
+    invalid.affection = -4;
+    invalid.stimulation = 140;
     invalid.ageMillis = 123;
     invalid.sleeping = true;
     pet.restore(invalid);
     const auto& state = pet.state();
     return state.hunger == 0 && state.happiness == 100 && state.energy == 0 &&
-           state.health == 100 && state.hygiene == 100 && state.ageMillis == 123 &&
+           state.health == 100 && state.hygiene == 100 && state.affection == 0 &&
+           state.stimulation == 100 && state.ageMillis == 123 &&
            state.sleeping;
 }
 bool hygieneRestoreClampsLow() {
@@ -189,27 +194,51 @@ bool sleepDoesNotLowerHygiene() {
     pet.update();
     return pet.state().hygiene == 50;
 }
-bool highHungerLowersHappiness() {
+bool highHungerLowersHappinessOnlyWhenUrgent() {
+    namespace B = neripal::core::balance;
     FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
     auto state = pet.state();
-    state.hunger = neripal::core::balance::kNeglectThreshold;
+    state.hunger = B::kHungerAttention;
     state.hygiene = 80;
+    state.energy = 80;
+    state.affection = 80;
+    state.stimulation = 80;
     state.happiness = 50;
     pet.restore(state);
-    clock.advance(neripal::core::balance::kNeedsStepMs);
+    clock.advance(B::kNeedsStepMs);
     pet.update();
-    return pet.state().happiness == 49;
+    if (pet.state().hunger != B::kHungerAttention + 1 || pet.state().happiness != 50) return false;
+
+    state = pet.state();
+    state.hunger = B::kHungerUrgent - 1;
+    state.happiness = 50;
+    pet.restore(state);
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().hunger == B::kHungerUrgent && pet.state().happiness == 49;
 }
-bool lowHygieneLowersHappiness() {
+bool lowHygieneLowersHappinessOnlyWhenUrgent() {
+    namespace B = neripal::core::balance;
     FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
     auto state = pet.state();
     state.hunger = 10;
-    state.hygiene = neripal::core::balance::kHygieneNeglectThreshold;
+    state.energy = 80;
+    state.affection = 80;
+    state.stimulation = 80;
+    state.hygiene = B::kLowNeedAttention;
     state.happiness = 50;
     pet.restore(state);
-    clock.advance(neripal::core::balance::kNeedsStepMs);
+    clock.advance(B::kNeedsStepMs);
     pet.update();
-    return pet.state().happiness == 49;
+    if (pet.state().hygiene != B::kLowNeedAttention - 1 || pet.state().happiness != 50) return false;
+
+    state = pet.state();
+    state.hygiene = B::kLowNeedUrgent;
+    state.happiness = 50;
+    pet.restore(state);
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().hygiene == B::kLowNeedUrgent - 1 && pet.state().happiness == 49;
 }
 bool zeroHygieneLowersHealth() {
     FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
@@ -1592,6 +1621,190 @@ bool offlinePlayerSleepSettleMatchesMinuteOracle() {
            fast.state().activity == Activity::Sleep;
 }
 
+bool needLevelsFollowProvisionalThresholds() {
+    using neripal::core::Need;
+    using neripal::core::NeedLevel;
+    using neripal::core::needLevel;
+    namespace B = neripal::core::balance;
+
+    if (needLevel(Need::Hunger, B::kHungerAttention - 1) != NeedLevel::Normal) return false;
+    if (needLevel(Need::Hunger, B::kHungerAttention) != NeedLevel::Attention) return false;
+    if (needLevel(Need::Hunger, B::kHungerUrgent - 1) != NeedLevel::Attention) return false;
+    if (needLevel(Need::Hunger, B::kHungerUrgent) != NeedLevel::Urgent) return false;
+
+    const Need lows[] = {Need::Energy, Need::Hygiene, Need::Affection, Need::Stimulation};
+    for (const Need need : lows) {
+        if (needLevel(need, B::kLowNeedAttention + 1) != NeedLevel::Normal) return false;
+        if (needLevel(need, B::kLowNeedAttention) != NeedLevel::Attention) return false;
+        if (needLevel(need, B::kLowNeedUrgent + 1) != NeedLevel::Attention) return false;
+        if (needLevel(need, B::kLowNeedUrgent) != NeedLevel::Urgent) return false;
+    }
+    return true;
+}
+
+bool oneUrgentDropsHappinessOnce() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    auto state = pet.state();
+    state.hunger = B::kHungerUrgent;
+    state.hygiene = B::kLowNeedUrgent;
+    state.energy = 80;
+    state.affection = 80;
+    state.stimulation = 80;
+    state.happiness = 50;
+    state.health = 80;
+    pet.restore(state);
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().happiness == 49 && pet.state().health == 80;
+}
+
+bool affectionUrgentDoesNotLowerHealth() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    auto state = pet.state();
+    state.affection = 0;
+    state.hunger = 10;
+    state.energy = 80;
+    state.hygiene = 80;
+    state.stimulation = 80;
+    state.health = 50;
+    state.happiness = 50;
+    pet.restore(state);
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().health == 50 && pet.state().happiness == 49 && pet.state().affection == 0;
+}
+
+bool awakeAffectionAndStimulationFollowCadence() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    const int affection = pet.state().affection;
+    const int stimulation = pet.state().stimulation;
+    clock.advance(2 * B::kNeedsStepMs);
+    pet.update();
+    if (pet.state().affection != affection || pet.state().stimulation != stimulation - 2) return false;
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().affection == affection - 1 && pet.state().stimulation == stimulation - 3;
+}
+
+bool sleepSlowsHygieneAndAffectionAndHoldsStimulation() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const int hygiene = pet.state().hygiene;
+    const int affection = pet.state().affection;
+    const int stimulation = pet.state().stimulation;
+    if (pet.sleep() != CareResult::Applied) return false;
+    clock.advance(3 * B::kNeedsStepMs);
+    pet.update();
+    if (pet.state().hygiene != hygiene || pet.state().affection != affection ||
+        pet.state().stimulation != stimulation) {
+        return false;
+    }
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    if (pet.state().hygiene != hygiene - 1 || pet.state().affection != affection) return false;
+    clock.advance(2 * B::kNeedsStepMs);
+    pet.update();
+    return pet.state().hygiene == hygiene - 1 && pet.state().affection == affection - 1 &&
+           pet.state().stimulation == stimulation;
+}
+
+bool petRaisesAffectionWithoutStimulation() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const int stimulation = pet.state().stimulation;
+    const int happiness = pet.state().happiness;
+    return pet.pet() == CareResult::Applied &&
+           pet.state().affection == B::kAffectionStart + B::kPetAffection &&
+           pet.state().stimulation == stimulation &&
+           pet.state().happiness == happiness + B::kPetHappiness &&
+           pet.state().activity == Activity::Happy;
+}
+
+bool playRaisesStimulationWithoutAffection() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const int affection = pet.state().affection;
+    const int energy = pet.state().energy;
+    const int hunger = pet.state().hunger;
+    const int happiness = pet.state().happiness;
+    return pet.play() == CareResult::Applied &&
+           pet.state().stimulation == B::kStimulationStart + B::kPlayStimulation &&
+           pet.state().affection == affection &&
+           pet.state().energy == energy + B::kPlayEnergy &&
+           pet.state().hunger == hunger + B::kPlayHunger &&
+           pet.state().happiness == happiness + B::kPlayHappiness;
+}
+
+bool trainRaisesStimulationWithoutAffection() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    auto state = pet.state();
+    state.health = 90;
+    pet.restore(state);
+    return pet.train() == CareResult::Applied &&
+           pet.state().stimulation == B::kStimulationStart + B::kTrainStimulation &&
+           pet.state().affection == B::kAffectionStart &&
+           pet.state().health == 92;
+}
+
+bool playRejectedWithoutEnergy() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    auto low = pet.state();
+    low.energy = -B::kPlayEnergy - 1;
+    pet.restore(low);
+    const auto before = pet.state();
+    return pet.play() == CareResult::RejectedNoEnergy && sameCareStats(before, pet.state()) &&
+           pet.state().activity == Activity::Tired;
+}
+
+bool petRejectedWhenAsleep() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    if (pet.sleep() != CareResult::Applied) return false;
+    const auto before = pet.state();
+    return pet.pet() == CareResult::RejectedAsleep && sameCareStats(before, pet.state());
+}
+
+bool captureRestoresAffectionAndNeedsPhase() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    if (pet.pet() != CareResult::Applied) return false;
+    clock.advance(3 * B::kNeedsStepMs);
+    pet.update();
+    const auto snap = pet.capture();
+    if (snap.needsStepPhase != 3 || snap.affection != B::kAffectionStart + B::kPetAffection - 1) {
+        return false;
+    }
+    pet.reset();
+    pet.restoreSnapshot(snap);
+    const auto again = pet.capture();
+    return again.needsStepPhase == 3 && again.affection == snap.affection &&
+           again.stimulation == snap.stimulation;
+}
+
 bool offlineNapSplitSettleMatchesMinuteOracle() {
     namespace B = neripal::core::balance;
     FakeClock clock;
@@ -1624,6 +1837,265 @@ bool offlineNapSplitSettleMatchesMinuteOracle() {
            fast.state().energy < B::kNapWakeEnergy + 2;
 }
 
+PetState watchedHunger(int hunger) {
+    PetState state;
+    state.hunger = hunger;
+    state.energy = 100;
+    state.hygiene = 100;
+    state.affection = 100;
+    state.stimulation = 100;
+    state.happiness = 80;
+    state.health = 90;
+    state.stage = neripal::core::EvolutionStage::Baby;
+    return state;
+}
+
+void advanceMinutes(FakeClock& clock, Pet& pet, int minutes) {
+    clock.advance(static_cast<std::uint64_t>(minutes) * neripal::core::balance::kNeedsStepMs);
+    pet.update();
+}
+
+bool attentionDoesNotOpenCareEpisode() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerAttention));
+    advanceMinutes(clock, pet, 1);
+    const auto& episode = pet.careRecord().episodes[0];
+    return episode.state == EpisodeState::None &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby)
+                   .careMistakes == 0 &&
+           pet.state().hunger == B::kHungerAttention + 1;
+}
+
+bool urgentOpensEpisodeWithoutMistake() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1);
+    const auto& episode = pet.careRecord().episodes[0];
+    const auto& history =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
+    return episode.state == EpisodeState::Open &&
+           episode.stepsRemaining == B::kAttentionWindowSteps && history.careMistakes == 0 &&
+           pet.careRecord().lifetimeCareMistakes == 0;
+}
+
+bool careBeforeTimeoutAddsNoMistake() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps - 1);
+    if (pet.careRecord().episodes[0].stepsRemaining != 1) return false;
+    if (pet.feed() != CareResult::Applied) return false;
+    advanceMinutes(clock, pet, 1);
+    const auto& history =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
+    return pet.careRecord().episodes[0].state == EpisodeState::None && history.careMistakes == 0 &&
+           pet.careRecord().lifetimeCareMistakes == 0;
+}
+
+bool careTimeoutAddsExactlyOneMistake() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps);
+    const auto& episode = pet.careRecord().episodes[0];
+    const auto& history =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
+    return episode.state == EpisodeState::Counted && history.careMistakes == 1 &&
+           pet.careRecord().lifetimeCareMistakes == 1 &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child)
+                   .careMistakes == 0;
+}
+
+bool stayingUrgentDoesNotAddAnotherMistake() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps + 30);
+    const auto& history =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
+    return pet.careRecord().episodes[0].state == EpisodeState::Counted &&
+           history.careMistakes == 1 && pet.careRecord().lifetimeCareMistakes == 1;
+}
+
+bool leavingUrgentClosesEpisode() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1);
+    if (pet.careRecord().episodes[0].state != EpisodeState::Open) return false;
+    if (pet.feed() != CareResult::Applied) return false;
+    advanceMinutes(clock, pet, 1);
+    return pet.careRecord().episodes[0].state == EpisodeState::None &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby)
+                   .careMistakes == 0;
+}
+
+bool reenteringUrgentOpensNewEpisode() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps);
+    if (pet.careRecord().lifetimeCareMistakes != 1) return false;
+    auto cooled = pet.state();
+    cooled.hunger = 10;
+    pet.restore(cooled);
+    advanceMinutes(clock, pet, 1);
+    if (pet.careRecord().episodes[0].state != EpisodeState::None) return false;
+    auto again = pet.state();
+    again.hunger = B::kHungerUrgent;
+    pet.restore(again);
+    advanceMinutes(clock, pet, 1);
+    return pet.careRecord().episodes[0].state == EpisodeState::Open &&
+           pet.careRecord().lifetimeCareMistakes == 1;
+}
+
+bool sleepPausesAttentionWindow() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1);
+    if (pet.sleep() != CareResult::Applied) return false;
+    advanceMinutes(clock, pet, 20);
+    const auto& paused = pet.careRecord().episodes[0];
+    if (paused.state != EpisodeState::Open || paused.stepsRemaining != B::kAttentionWindowSteps) {
+        return false;
+    }
+    if (pet.wake() != CareResult::Applied) return false;
+    if (pet.careRecord().episodes[0].stepsRemaining != B::kAttentionWindowSteps) return false;
+    advanceMinutes(clock, pet, 1);
+    return pet.careRecord().episodes[0].state == EpisodeState::Open &&
+           pet.careRecord().episodes[0].stepsRemaining == B::kAttentionWindowSteps - 1 &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby)
+                   .careMistakes == 0;
+}
+
+bool offlineDoesNotTouchWindowOrMistakes() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1);
+    const auto stepsBefore =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps;
+    pet.applyOffline(20 * B::kNeedsStepMs, 20 * B::kNeedsStepMs);
+    const auto& episode = pet.careRecord().episodes[0];
+    const auto& history =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
+    if (episode.state != EpisodeState::Open || episode.stepsRemaining != B::kAttentionWindowSteps ||
+        history.careMistakes != 0 || history.steps <= stepsBefore) {
+        return false;
+    }
+
+    Pet untouched(clock, rng);
+    untouched.restore(watchedHunger(B::kHungerAttention));
+    untouched.applyOffline(30 * B::kNeedsStepMs, 30 * B::kNeedsStepMs);
+    return untouched.careRecord().episodes[0].state == EpisodeState::None &&
+           untouched.careRecord().lifetimeCareMistakes == 0 &&
+           untouched.state().hunger >= B::kHungerUrgent;
+}
+
+bool responseTimeCountsOpenMinutes() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1 + 4);
+    if (pet.feed() != CareResult::Applied) return false;
+    advanceMinutes(clock, pet, 1);
+    const auto& history =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
+    return history.responseCount == 1 && history.responseStepsSum == 4 && history.careMistakes == 0;
+}
+
+bool trainIncrementsTrainingCountAndPlayDoesNot() {
+    namespace B = neripal::core::balance;
+    using neripal::core::TrainingLevel;
+    using neripal::core::trainingLevel;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    const auto& history =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
+    if (pet.play() != CareResult::Applied || history.trainCount != 0) return false;
+    auto empty = pet.state();
+    empty.energy = 0;
+    pet.restore(empty);
+    if (pet.train() != CareResult::RejectedNoEnergy || history.trainCount != 0) return false;
+
+    int applied = 0;
+    while (applied < B::kTrainingFrequentCount) {
+        if (pet.state().energy < -B::kTrainEnergy) {
+            auto rested = pet.state();
+            rested.energy = 100;
+            pet.restore(rested);
+        }
+        if (pet.train() != CareResult::Applied) return false;
+        ++applied;
+        const auto level = trainingLevel(history);
+        if (applied < B::kTrainingModerateCount && level != TrainingLevel::Low) return false;
+        if (applied >= B::kTrainingModerateCount && applied < B::kTrainingFrequentCount &&
+            level != TrainingLevel::Moderate) {
+            return false;
+        }
+    }
+    if (pet.play() != CareResult::Applied) return false;
+    return history.trainCount == B::kTrainingFrequentCount &&
+           trainingLevel(history) == TrainingLevel::Frequent;
+}
+
+bool stageHistoryIsKeptWhenAgeMovesStage() {
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet(clock, rng);
+    advanceMinutes(clock, pet, 1);
+    const auto babySteps =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps;
+    if (babySteps != 1) return false;
+    auto older = pet.state();
+    older.ageMillis = neripal::core::evolution::kChildAgeMs;
+    older.stage = neripal::core::EvolutionStage::Child;
+    pet.restore(older);
+    if (neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps !=
+        babySteps) {
+        return false;
+    }
+    advanceMinutes(clock, pet, 1);
+    return pet.state().stage == neripal::core::EvolutionStage::Child &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps ==
+               babySteps &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child).steps ==
+               1;
+}
+
 }  // namespace
 
 int main() {
@@ -1646,8 +2118,8 @@ int main() {
         {"clean does not exceed max", cleanDoesNotExceedMax},
         {"awake time lowers hygiene", awakeTimeLowersHygiene},
         {"sleep does not lower hygiene", sleepDoesNotLowerHygiene},
-        {"high hunger lowers happiness", highHungerLowersHappiness},
-        {"low hygiene lowers happiness", lowHygieneLowersHappiness},
+        {"high hunger lowers happiness only when urgent", highHungerLowersHappinessOnlyWhenUrgent},
+        {"low hygiene lowers happiness only when urgent", lowHygieneLowersHappinessOnlyWhenUrgent},
         {"zero hygiene lowers health", zeroHygieneLowersHealth},
         {"feed rejected when asleep", feedRejectedWhenAsleep},
         {"train rejected when asleep", trainRejectedWhenAsleep},
@@ -1729,6 +2201,29 @@ int main() {
         {"offline settle matches minute oracle", offlineSettleMatchesMinuteOracle},
         {"offline player sleep settle matches minute oracle", offlinePlayerSleepSettleMatchesMinuteOracle},
         {"offline nap split settle matches minute oracle", offlineNapSplitSettleMatchesMinuteOracle},
+        {"need levels follow provisional thresholds", needLevelsFollowProvisionalThresholds},
+        {"one urgent drops happiness once", oneUrgentDropsHappinessOnce},
+        {"affection urgent does not lower health", affectionUrgentDoesNotLowerHealth},
+        {"awake affection and stimulation follow cadence", awakeAffectionAndStimulationFollowCadence},
+        {"sleep slows hygiene and affection and holds stimulation", sleepSlowsHygieneAndAffectionAndHoldsStimulation},
+        {"pet raises affection without stimulation", petRaisesAffectionWithoutStimulation},
+        {"play raises stimulation without affection", playRaisesStimulationWithoutAffection},
+        {"train raises stimulation without affection", trainRaisesStimulationWithoutAffection},
+        {"play rejected without energy", playRejectedWithoutEnergy},
+        {"pet rejected when asleep", petRejectedWhenAsleep},
+        {"capture restores affection and needs phase", captureRestoresAffectionAndNeedsPhase},
+        {"attention does not open care episode", attentionDoesNotOpenCareEpisode},
+        {"urgent opens episode without mistake", urgentOpensEpisodeWithoutMistake},
+        {"care before timeout adds no mistake", careBeforeTimeoutAddsNoMistake},
+        {"care timeout adds exactly one mistake", careTimeoutAddsExactlyOneMistake},
+        {"staying urgent does not add another mistake", stayingUrgentDoesNotAddAnotherMistake},
+        {"leaving urgent closes episode", leavingUrgentClosesEpisode},
+        {"reentering urgent opens new episode", reenteringUrgentOpensNewEpisode},
+        {"sleep pauses attention window", sleepPausesAttentionWindow},
+        {"offline does not touch window or mistakes", offlineDoesNotTouchWindowOrMistakes},
+        {"response time counts open minutes", responseTimeCountsOpenMinutes},
+        {"train increments training count and play does not", trainIncrementsTrainingCountAndPlayDoesNot},
+        {"stage history is kept when age moves stage", stageHistoryIsKeptWhenAgeMovesStage},
     };
 
     int failures = 0;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "neripal/core/Balance.hpp"
+#include "neripal/core/CareHistory.hpp"
 #include "neripal/core/Evolution.hpp"
 #include "neripal/core/SleepCause.hpp"
 
@@ -14,11 +16,15 @@ struct PetSnapshot {
     int energy = 80;
     int health = 100;
     int hygiene = 80;
+    int affection = balance::kAffectionStart;
+    int stimulation = balance::kStimulationStart;
     std::uint64_t ageMillis = 0;
     std::uint32_t needsRemainderMs = 0;
+    std::uint8_t needsStepPhase = 0;
     EvolutionStage stage = EvolutionStage::Baby;
     SleepCause sleepCause = SleepCause::None;
     std::uint32_t napRemainingMs = 0;
+    CareRecord care{};
 };
 
 // If energy reaches kNapWakeEnergy before napRemainingMs elapses, Nap ends and

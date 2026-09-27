@@ -8,6 +8,8 @@ enum class CareAction {
     Sleep,
     Wake,
     Clean,
+    Pet,
+    Play,
 };
 
 enum class CareResult {

@@ -17,12 +17,15 @@ public:
     Pet(IClock& clock, IRandom& random);
 
     const PetState& state() const noexcept { return state_; }
+    const CareRecord& careRecord() const noexcept { return care_; }
 
     CareResult feed();
     CareResult train();
     CareResult sleep();
     CareResult wake();
     CareResult clean();
+    CareResult pet();
+    CareResult play();
     CareResult apply(CareAction action);
     void update();
     void reset();
@@ -47,6 +50,7 @@ public:
 
 private:
     static int clampStat(int value) noexcept;
+    CareResult applyStatAction(CareAction action);
     void applyNeedsStep();
     void updateEvolution();
     void anchorClock();
@@ -56,8 +60,10 @@ private:
     Autonomy autonomy_{};
     GameEventQueue events_{};
     PetState state_{};
+    CareRecord care_{};
     std::uint64_t lastUpdateMs_ = 0;
     std::uint64_t needsRemainderMs_ = 0;
+    std::uint8_t needsStepPhase_ = 0;
 };
 
 }  // namespace neripal::core

@@ -161,6 +161,8 @@ void Autonomy::onCareApplied(CareAction action, PetState& state, GameEventQueue&
             break;
         case CareAction::Train:
         case CareAction::Clean:
+        case CareAction::Pet:
+        case CareAction::Play:
             interruptInto(state, events, Activity::Happy, balance::kHappyDurationMs);
             break;
         case CareAction::Sleep:

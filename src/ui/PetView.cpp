@@ -290,6 +290,8 @@ const char* appliedLabel(core::CareAction action) {
         case core::CareAction::Sleep: return "ZZZ";
         case core::CareAction::Wake: return "UP";
         case core::CareAction::Clean: return "WASH";
+        case core::CareAction::Pet: return "PAT";
+        case core::CareAction::Play: return "PLAY";
     }
     return "";
 }
@@ -318,6 +320,9 @@ void drawCareOverlay(platform::IRenderer& r, const UiState& uiState) {
             r.fillRect(156, 70, 4, 4, kPanelLight);
             r.fillRect(84, 126, 4, 4, kGold);
             r.fillRect(150, 118, 4, 4, kPanelLight);
+            break;
+        case core::CareAction::Pet:
+        case core::CareAction::Play:
             break;
     }
     drawPanel(r, 154, 36, 62, 24, kPanel);

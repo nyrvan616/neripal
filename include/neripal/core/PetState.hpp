@@ -1,6 +1,7 @@
 #pragma once
 
 #include "neripal/core/Activity.hpp"
+#include "neripal/core/Balance.hpp"
 #include "neripal/core/Evolution.hpp"
 
 #include <cstdint>
@@ -13,6 +14,8 @@ struct PetState {
     int energy = 80;       // 0 = empty, 100 = full
     int health = 100;      // 0 = minimum, 100 = maximum
     int hygiene = 80;      // 0 = dirty, 100 = clean
+    int affection = balance::kAffectionStart;      // 0 = neglected, 100 = attended
+    int stimulation = balance::kStimulationStart;  // 0 = bored, 100 = stimulated
     std::uint64_t ageMillis = 0;
     bool sleeping = false;
     EvolutionStage stage = EvolutionStage::Baby;

@@ -7,6 +7,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(neripal_core STATIC
     src/core/Autonomy.cpp
+    src/core/CareHistory.cpp
+    src/core/Needs.cpp
     src/core/Pet.cpp
     src/core/XorShift32.cpp
 )
