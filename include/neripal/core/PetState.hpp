@@ -19,6 +19,7 @@ struct PetState {
     std::uint64_t ageMillis = 0;
     bool sleeping = false;
     EvolutionStage stage = EvolutionStage::Egg;
+    FormId form = FormId::None;
 
     // Presentation snapshot of the current activity. Mood is not stored here.
     Activity activity = Activity::Idle;

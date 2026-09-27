@@ -4,6 +4,7 @@
 #include "neripal/core/Autonomy.hpp"
 #include "neripal/core/Balance.hpp"
 #include "neripal/core/Care.hpp"
+#include "neripal/core/EvolutionRules.hpp"
 #include "neripal/core/GameEvent.hpp"
 #include "neripal/core/Mood.hpp"
 #include "neripal/core/Needs.hpp"
@@ -73,6 +74,7 @@ Pet hatchedPet(FakeClock& clock, Random& rng) {
     Pet pet(clock, rng);
     auto state = pet.state();
     state.stage = neripal::core::EvolutionStage::Baby;
+    state.form = neripal::core::FormId::Juvenile;
     pet.restore(state);
     return pet;
 }
@@ -2144,6 +2146,7 @@ bool eggHatchesAtThreshold() {
     pet.update();
     GameEvent event{};
     if (pet.state().stage != neripal::core::EvolutionStage::Baby) return false;
+    if (pet.state().form != neripal::core::FormId::Juvenile) return false;
     if (pet.state().hunger != hunger) return false;
     if (!pet.pollEvent(event) || event.kind != GameEventKind::Hatched) return false;
     return !pet.pollEvent(event);
@@ -2157,6 +2160,7 @@ bool babyBecomesChildAtAge() {
     clock.advance(E::kChildAgeMs);
     pet.update();
     return pet.state().stage == neripal::core::EvolutionStage::Child &&
+           pet.state().form == neripal::core::FormId::Juvenile &&
            pet.state().ageMillis == E::kChildAgeMs;
 }
 
@@ -2340,6 +2344,556 @@ bool stageChangeStartsNewHistoryAndKeepsPrevious() {
                    .steps == 1;
 }
 
+PetSnapshot childAtAdultGate(std::uint16_t mistakes, std::uint16_t trains, std::uint32_t steps,
+                             std::uint32_t healthGood, std::uint32_t happinessGood) {
+    PetSnapshot snap;
+    snap.stage = neripal::core::EvolutionStage::Child;
+    snap.form = neripal::core::FormId::Juvenile;
+    snap.ageMillis = neripal::core::evolution::kAdultAgeMs;
+    snap.sleepCause = SleepCause::Player;
+    snap.energy = 80;
+    auto& history =
+        neripal::core::historyFor(snap.care, neripal::core::EvolutionStage::Child);
+    history.careMistakes = mistakes;
+    history.trainCount = trains;
+    history.steps = steps;
+    history.healthGoodSteps = healthGood;
+    history.happinessGoodSteps = happinessGood;
+    return snap;
+}
+
+bool evolveSleepingChild(Pet& pet, FakeClock& clock, const PetSnapshot& snap) {
+    pet.restoreSnapshot(snap);
+    clock.advance(neripal::core::balance::kNeedsStepMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Adult;
+}
+
+bool childToAdultFollowsFixtureRules() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet frequent = hatchedPet(clock, rng);
+    Pet balanced = hatchedPet(clock, rng);
+    Pet neglected = hatchedPet(clock, rng);
+    const auto frequentSnap = childAtAdultGate(0, 18, 100, 100, 100);
+    const auto balancedSnap = childAtAdultGate(2, 0, 100, 0, 60);
+    const auto neglectedSnap = childAtAdultGate(3, 0, 100, 100, 100);
+    if (!evolveSleepingChild(frequent, clock, frequentSnap)) return false;
+    if (!evolveSleepingChild(balanced, clock, balancedSnap)) return false;
+    if (!evolveSleepingChild(neglected, clock, neglectedSnap)) return false;
+    return frequent.state().form == neripal::core::FormId::AdultA &&
+           balanced.state().form == neripal::core::FormId::AdultB &&
+           neglected.state().form == neripal::core::FormId::AdultC && rng.remaining() == 0;
+}
+
+bool specialRulePicksSecretOrAdultB() {
+    using neripal::core::EvolutionContext;
+    using neripal::core::EvolutionStage;
+    using neripal::core::FormId;
+    using neripal::core::resolveEvolution;
+    const auto snap = childAtAdultGate(0, 6, 100, 90, 90);
+    EvolutionContext context;
+    context.care = &snap.care;
+    context.leaving = EvolutionStage::Child;
+    FakeRandom secretRng(std::vector<std::uint32_t>{0u});
+    FakeRandom branchRng(std::vector<std::uint32_t>{1u});
+    return resolveEvolution(context, secretRng) == FormId::AdultSecret &&
+           secretRng.remaining() == 0 &&
+           resolveEvolution(context, branchRng) == FormId::AdultB && branchRng.remaining() == 0;
+}
+
+bool higherPriorityRuleWins() {
+    using neripal::core::EvolutionContext;
+    using neripal::core::EvolutionStage;
+    using neripal::core::FormId;
+    using neripal::core::resolveEvolution;
+    const auto snap = childAtAdultGate(0, 6, 100, 100, 100);
+    EvolutionContext context;
+    context.care = &snap.care;
+    context.leaving = EvolutionStage::Child;
+    FakeRandom rng(std::vector<std::uint32_t>{0u});
+    return resolveEvolution(context, rng) == FormId::AdultSecret;
+}
+
+bool fallbackResolvesEmptyHistory() {
+    using neripal::core::EvolutionContext;
+    using neripal::core::EvolutionStage;
+    using neripal::core::FormId;
+    using neripal::core::resolveEvolution;
+    PetSnapshot snap;
+    snap.stage = EvolutionStage::Child;
+    EvolutionContext context;
+    context.care = &snap.care;
+    context.leaving = EvolutionStage::Child;
+    FakeRandom rng;
+    return resolveEvolution(context, rng) == FormId::AdultC;
+}
+
+bool identicalRaisingWithoutRngMatches() {
+    using neripal::core::EvolutionContext;
+    using neripal::core::EvolutionStage;
+    using neripal::core::resolveEvolution;
+    const auto first = childAtAdultGate(0, 18, 100, 40, 40);
+    const auto second = childAtAdultGate(0, 18, 100, 40, 40);
+    EvolutionContext left;
+    left.care = &first.care;
+    left.leaving = EvolutionStage::Child;
+    EvolutionContext right;
+    right.care = &second.care;
+    right.leaving = EvolutionStage::Child;
+    FakeRandom leftRng;
+    FakeRandom rightRng;
+    return resolveEvolution(left, leftRng) == resolveEvolution(right, rightRng);
+}
+
+bool evolutionRngConsumedOnce() {
+    FakeClock clock;
+    FakeRandom rng(std::vector<std::uint32_t>{0u, 7u});
+    Pet pet = hatchedPet(clock, rng);
+    const auto snap = childAtAdultGate(0, 6, 100, 100, 100);
+    if (!evolveSleepingChild(pet, clock, snap)) return false;
+    if (pet.state().form != neripal::core::FormId::AdultSecret || rng.remaining() != 1) {
+        return false;
+    }
+    clock.advance(neripal::core::balance::kNeedsStepMs);
+    pet.update();
+    return pet.state().form == neripal::core::FormId::AdultSecret &&
+           pet.state().stage == neripal::core::EvolutionStage::Adult && rng.remaining() == 1;
+}
+
+bool laterTickKeepsForm() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    const auto snap = childAtAdultGate(0, 18, 100, 100, 100);
+    if (!evolveSleepingChild(pet, clock, snap)) return false;
+    const auto chosen = pet.state().form;
+    clock.advance(neripal::core::balance::kNeedsStepMs);
+    pet.update();
+    return pet.state().form == chosen && pet.state().form == neripal::core::FormId::AdultA &&
+           pet.state().stage == neripal::core::EvolutionStage::Adult;
+}
+
+bool restoreSnapshotKeepsFormWithoutReroll() {
+    FakeClock clock;
+    FakeRandom rng(std::vector<std::uint32_t>{0u});
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = childAtAdultGate(0, 18, 100, 100, 100);
+    snap.stage = neripal::core::EvolutionStage::Adult;
+    snap.form = neripal::core::FormId::AdultC;
+    pet.restoreSnapshot(snap);
+    if (pet.state().form != neripal::core::FormId::AdultC) return false;
+    clock.advance(neripal::core::balance::kNeedsStepMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Adult &&
+           pet.state().form == neripal::core::FormId::AdultC && rng.remaining() == 1;
+}
+
+bool adultToFinalKeepsForm() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = pet.capture();
+    snap.stage = neripal::core::EvolutionStage::Adult;
+    snap.form = neripal::core::FormId::AdultB;
+    snap.ageMillis = E::kFinalAgeMs - 1;
+    snap.sleepCause = SleepCause::Player;
+    pet.restoreSnapshot(snap);
+    clock.advance(1);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Final &&
+           pet.state().form == neripal::core::FormId::AdultB && rng.remaining() == 0;
+}
+
+bool evolutionContextReadsOtherStageAndLifetime() {
+    using neripal::core::EvolutionContext;
+    using neripal::core::EvolutionRule;
+    using neripal::core::EvolutionStage;
+    using neripal::core::FormId;
+    using neripal::core::ruleMatches;
+    using neripal::core::resolveEvolution;
+    PetSnapshot snap;
+    auto& baby = neripal::core::historyFor(snap.care, EvolutionStage::Baby);
+    baby.careMistakes = 4;
+    baby.steps = 10;
+    auto& child = neripal::core::historyFor(snap.care, EvolutionStage::Child);
+    child.careMistakes = 0;
+    child.trainCount = 18;
+    child.steps = 10;
+    neripal::core::historyFor(snap.care, EvolutionStage::Adult).steps = 3;
+    neripal::core::historyFor(snap.care, EvolutionStage::Final).steps = 8;
+    snap.care.lifetimeCareMistakes = 9;
+
+    EvolutionContext context;
+    context.care = &snap.care;
+    context.leaving = EvolutionStage::Child;
+    if (context.stageHistory(EvolutionStage::Baby).careMistakes != 4) return false;
+    if (context.stageHistory(EvolutionStage::Adult).steps != 3) return false;
+    if (context.stageHistory(EvolutionStage::Final).steps != 8) return false;
+    if (context.lifetimeCareMistakes() != 9) return false;
+
+    EvolutionRule babyMistakes{};
+    babyMistakes.from = EvolutionStage::Child;
+    babyMistakes.exits[0] = FormId::AdultC;
+    babyMistakes.exitCount = 1;
+    babyMistakes.mistakes.enabled = true;
+    babyMistakes.mistakes.stage = EvolutionStage::Baby;
+    babyMistakes.mistakes.exact = true;
+    babyMistakes.mistakes.maximum = 4;
+    if (!ruleMatches(babyMistakes, context)) return false;
+
+    EvolutionRule childExact{};
+    childExact.mistakes.enabled = true;
+    childExact.mistakes.stage = EvolutionStage::Child;
+    childExact.mistakes.exact = true;
+    childExact.mistakes.maximum = 4;
+    if (ruleMatches(childExact, context)) return false;
+
+    EvolutionRule lifetimeExact{};
+    lifetimeExact.mistakes.enabled = true;
+    lifetimeExact.mistakes.lifetime = true;
+    lifetimeExact.mistakes.exact = true;
+    lifetimeExact.mistakes.maximum = 9;
+    if (!ruleMatches(lifetimeExact, context)) return false;
+
+    FakeRandom rng;
+    return resolveEvolution(context, rng) == FormId::AdultA;
+}
+
+bool sameStageHistory(const Pet& left, const Pet& right) {
+    using neripal::core::EvolutionStage;
+    const EvolutionStage stages[] = {
+        EvolutionStage::Egg, EvolutionStage::Baby, EvolutionStage::Child,
+        EvolutionStage::Adult, EvolutionStage::Final,
+    };
+    for (const auto stage : stages) {
+        const auto& a = neripal::core::historyFor(left.careRecord(), stage);
+        const auto& b = neripal::core::historyFor(right.careRecord(), stage);
+        if (a.steps != b.steps || a.healthGoodSteps != b.healthGoodSteps ||
+            a.healthPoorSteps != b.healthPoorSteps || a.happinessGoodSteps != b.happinessGoodSteps ||
+            a.happinessPoorSteps != b.happinessPoorSteps || a.careMistakes != b.careMistakes ||
+            a.trainCount != b.trainCount) {
+            return false;
+        }
+    }
+    if (left.careRecord().lifetimeCareMistakes != right.careRecord().lifetimeCareMistakes) {
+        return false;
+    }
+    for (std::size_t index = 0; index < neripal::core::kBaseNeedCount; ++index) {
+        const auto& a = left.careRecord().episodes[index];
+        const auto& b = right.careRecord().episodes[index];
+        if (a.state != b.state || a.stepsRemaining != b.stepsRemaining) return false;
+    }
+    return true;
+}
+
+bool sameNotices(const Pet& left, const Pet& right) {
+    const auto a = left.capture();
+    const auto b = right.capture();
+    if (a.noticeCount != b.noticeCount) return false;
+    for (std::uint8_t index = 0; index < a.noticeCount; ++index) {
+        if (a.notices[index].from != b.notices[index].from ||
+            a.notices[index].to != b.notices[index].to ||
+            a.notices[index].form != b.notices[index].form) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool sameOfflineResult(const Pet& left, const Pet& right) {
+    const auto a = left.capture();
+    const auto b = right.capture();
+    return sameNeeds(a, b) && sameCareStats(left.state(), right.state()) &&
+           a.needsStepPhase == b.needsStepPhase && a.stage == b.stage && a.form == b.form &&
+           a.ageMillis == b.ageMillis && a.sleepCause == b.sleepCause && sameStageHistory(left, right) &&
+           sameNotices(left, right);
+}
+
+std::uint32_t stageStepCount(const Pet& pet, neripal::core::EvolutionStage stage) {
+    return neripal::core::historyFor(pet.careRecord(), stage).steps;
+}
+
+bool offlineWithoutCrossingKeepsStage() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    pet.applyOffline(30 * B::kNeedsStepMs, 30 * B::kNeedsStepMs);
+    return pet.state().stage == neripal::core::EvolutionStage::Baby &&
+           pet.state().form == neripal::core::FormId::Juvenile &&
+           pet.state().ageMillis == 30 * B::kNeedsStepMs && pet.pendingEvolutionNotices() == 0;
+}
+
+bool offlineEggHatches() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const int hunger = pet.state().hunger;
+    pet.applyOffline(E::kEggHatchAgeMs, E::kEggHatchAgeMs);
+    neripal::core::EvolutionNotice notice{};
+    GameEvent event{};
+    while (pet.pollEvent(event)) {
+        if (event.kind == GameEventKind::Hatched) return false;
+    }
+    return pet.state().stage == neripal::core::EvolutionStage::Baby &&
+           pet.state().form == neripal::core::FormId::Juvenile && pet.state().hunger == hunger &&
+           pet.pendingEvolutionNotices() == 1 && pet.peekEvolutionNotice(notice) &&
+           notice.from == neripal::core::EvolutionStage::Egg &&
+           notice.to == neripal::core::EvolutionStage::Baby &&
+           notice.form == neripal::core::FormId::Juvenile &&
+           stageStepCount(pet, neripal::core::EvolutionStage::Egg) == 0 &&
+           stageStepCount(pet, neripal::core::EvolutionStage::Baby) == 0;
+}
+
+bool offlineBabyBecomesChild() {
+    namespace E = neripal::core::evolution;
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    pet.applyOffline(E::kChildAgeMs, E::kChildAgeMs);
+    neripal::core::EvolutionNotice notice{};
+    return pet.state().stage == neripal::core::EvolutionStage::Child &&
+           pet.state().form == neripal::core::FormId::Juvenile &&
+           stageStepCount(pet, neripal::core::EvolutionStage::Baby) ==
+               static_cast<std::uint32_t>(E::kChildAgeMs / B::kNeedsStepMs) &&
+           stageStepCount(pet, neripal::core::EvolutionStage::Child) == 0 &&
+           pet.pendingEvolutionNotices() == 1 && pet.peekEvolutionNotice(notice) &&
+           notice.from == neripal::core::EvolutionStage::Baby &&
+           notice.to == neripal::core::EvolutionStage::Child &&
+           notice.form == neripal::core::FormId::Juvenile;
+}
+
+bool offlineChildBecomesAdultOnce() {
+    namespace E = neripal::core::evolution;
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = childAtAdultGate(0, 18, 100, 100, 100);
+    snap.ageMillis = E::kAdultAgeMs - B::kNeedsStepMs;
+    pet.restoreSnapshot(snap);
+    pet.applyOffline(B::kNeedsStepMs, B::kNeedsStepMs);
+    if (pet.state().stage != neripal::core::EvolutionStage::Adult) return false;
+    if (pet.state().form != neripal::core::FormId::AdultA) return false;
+    if (rng.remaining() != 0) return false;
+    if (stageStepCount(pet, neripal::core::EvolutionStage::Child) != 101) return false;
+    if (stageStepCount(pet, neripal::core::EvolutionStage::Adult) != 0) return false;
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Adult &&
+           pet.state().form == neripal::core::FormId::AdultA && rng.remaining() == 0 &&
+           pet.pendingEvolutionNotices() == 1;
+}
+
+bool offlineAdultBecomesFinalKeepsForm() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = pet.capture();
+    snap.stage = neripal::core::EvolutionStage::Adult;
+    snap.form = neripal::core::FormId::AdultB;
+    snap.ageMillis = E::kAdultAgeMs;
+    pet.restoreSnapshot(snap);
+    const auto gap = E::kFinalAgeMs - E::kAdultAgeMs;
+    pet.applyOffline(gap, gap);
+    neripal::core::EvolutionNotice notice{};
+    return pet.state().stage == neripal::core::EvolutionStage::Final &&
+           pet.state().form == neripal::core::FormId::AdultB && rng.remaining() == 0 &&
+           pet.pendingEvolutionNotices() == 1 && pet.peekEvolutionNotice(notice) &&
+           notice.from == neripal::core::EvolutionStage::Adult &&
+           notice.to == neripal::core::EvolutionStage::Final &&
+           notice.form == neripal::core::FormId::AdultB;
+}
+
+bool offlineLongJumpCrossesInOrder() {
+    namespace E = neripal::core::evolution;
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    pet.applyOffline(E::kFinalAgeMs, E::kFinalAgeMs);
+    if (pet.state().stage != neripal::core::EvolutionStage::Final) return false;
+    if (rng.remaining() != 0) return false;
+    if (stageStepCount(pet, neripal::core::EvolutionStage::Egg) != 0) return false;
+    if (stageStepCount(pet, neripal::core::EvolutionStage::Baby) !=
+        static_cast<std::uint32_t>((E::kChildAgeMs - E::kEggHatchAgeMs) / B::kNeedsStepMs)) {
+        return false;
+    }
+    if (stageStepCount(pet, neripal::core::EvolutionStage::Child) !=
+        static_cast<std::uint32_t>((E::kAdultAgeMs - E::kChildAgeMs) / B::kNeedsStepMs)) {
+        return false;
+    }
+    if (stageStepCount(pet, neripal::core::EvolutionStage::Adult) !=
+        static_cast<std::uint32_t>((E::kFinalAgeMs - E::kAdultAgeMs) / B::kNeedsStepMs)) {
+        return false;
+    }
+    if (stageStepCount(pet, neripal::core::EvolutionStage::Final) != 0) return false;
+
+    const auto saved = pet.capture();
+    if (saved.noticeCount != 4) return false;
+    const neripal::core::EvolutionStage expectedFrom[] = {
+        neripal::core::EvolutionStage::Egg, neripal::core::EvolutionStage::Baby,
+        neripal::core::EvolutionStage::Child, neripal::core::EvolutionStage::Adult,
+    };
+    const neripal::core::EvolutionStage expectedTo[] = {
+        neripal::core::EvolutionStage::Baby, neripal::core::EvolutionStage::Child,
+        neripal::core::EvolutionStage::Adult, neripal::core::EvolutionStage::Final,
+    };
+    for (std::uint8_t index = 0; index < 4; ++index) {
+        if (saved.notices[index].from != expectedFrom[index] ||
+            saved.notices[index].to != expectedTo[index]) {
+            return false;
+        }
+    }
+    if (saved.notices[0].form != neripal::core::FormId::Juvenile) return false;
+    if (saved.notices[1].form != neripal::core::FormId::Juvenile) return false;
+    if (saved.notices[2].form != pet.state().form || saved.notices[3].form != pet.state().form) {
+        return false;
+    }
+    const auto stage = pet.state().stage;
+    const auto form = pet.state().form;
+    for (int index = 0; index < 4; ++index) {
+        if (!pet.confirmEvolutionNotice()) return false;
+    }
+    return pet.pendingEvolutionNotices() == 0 && pet.state().stage == stage &&
+           pet.state().form == form && !pet.confirmEvolutionNotice();
+}
+
+bool offlineHistorySplitsAcrossStages() {
+    namespace E = neripal::core::evolution;
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    auto state = pet.state();
+    state.ageMillis = E::kChildAgeMs - 2 * B::kNeedsStepMs;
+    pet.restore(state);
+    pet.applyOffline(5 * B::kNeedsStepMs, 5 * B::kNeedsStepMs);
+    return pet.state().stage == neripal::core::EvolutionStage::Child &&
+           stageStepCount(pet, neripal::core::EvolutionStage::Baby) == 2 &&
+           stageStepCount(pet, neripal::core::EvolutionStage::Child) == 3 &&
+           pet.pendingEvolutionNotices() == 1;
+}
+
+bool offlineUrgentLeavesWindowPaused() {
+    namespace B = neripal::core::balance;
+    using neripal::core::EpisodeState;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
+    pet.restore(watchedHunger(B::kHungerUrgent));
+    advanceMinutes(clock, pet, 1);
+    const int hygiene = pet.state().hygiene;
+    const auto& before = pet.careRecord().episodes[0];
+    if (before.state != EpisodeState::Open || before.stepsRemaining != B::kAttentionWindowSteps) {
+        return false;
+    }
+    pet.applyOffline(2ull * 60 * B::kNeedsStepMs, 2ull * 60 * B::kNeedsStepMs);
+    const auto& episode = pet.careRecord().episodes[0];
+    return episode.state == EpisodeState::Open &&
+           episode.stepsRemaining == B::kAttentionWindowSteps &&
+           pet.careRecord().lifetimeCareMistakes == 0 &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby)
+                   .careMistakes == 0 &&
+           pet.state().hygiene < hygiene;
+}
+
+bool offlineSpecialRollIsNotRepeated() {
+    namespace E = neripal::core::evolution;
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom rng(std::vector<std::uint32_t>{0u});
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = childAtAdultGate(0, 6, 100, 100, 100);
+    snap.ageMillis = E::kAdultAgeMs - B::kNeedsStepMs;
+    snap.hunger = 10;
+    snap.energy = 80;
+    snap.hygiene = 80;
+    snap.health = 90;
+    snap.happiness = 90;
+    snap.affection = 80;
+    snap.stimulation = 80;
+    pet.restoreSnapshot(snap);
+    pet.applyOffline(B::kNeedsStepMs, B::kNeedsStepMs);
+    if (pet.state().stage != neripal::core::EvolutionStage::Adult) return false;
+    if (pet.state().form != neripal::core::FormId::AdultSecret) return false;
+    if (rng.remaining() != 0) return false;
+    neripal::core::EvolutionNotice notice{};
+    if (pet.pendingEvolutionNotices() != 1 || !pet.peekEvolutionNotice(notice)) return false;
+    if (notice.from != neripal::core::EvolutionStage::Child ||
+        notice.to != neripal::core::EvolutionStage::Adult ||
+        notice.form != neripal::core::FormId::AdultSecret) {
+        return false;
+    }
+
+    const auto saved = pet.capture();
+    pet.reset();
+    pet.restoreSnapshot(saved);
+    if (pet.state().form != neripal::core::FormId::AdultSecret || pet.pendingEvolutionNotices() != 1) {
+        return false;
+    }
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    if (pet.state().stage != neripal::core::EvolutionStage::Adult ||
+        pet.state().form != neripal::core::FormId::AdultSecret || rng.remaining() != 0 ||
+        pet.pendingEvolutionNotices() != 1) {
+        return false;
+    }
+    const auto stage = pet.state().stage;
+    const auto form = pet.state().form;
+    if (!pet.confirmEvolutionNotice()) return false;
+    return pet.pendingEvolutionNotices() == 0 && pet.state().stage == stage && pet.state().form == form;
+}
+
+bool offlineMatchesMinuteByMinute() {
+    namespace E = neripal::core::evolution;
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    FakeRandom fastRng;
+    FakeRandom slowRng;
+    Pet fast = hatchedPet(clock, fastRng);
+    Pet slow = hatchedPet(clock, slowRng);
+    const auto gap = 3ull * 60 * B::kNeedsStepMs;
+    fast.applyOffline(gap, gap);
+    for (int minute = 0; minute < 180; ++minute) {
+        slow.applyOffline(B::kNeedsStepMs, B::kNeedsStepMs);
+    }
+    if (!sameOfflineResult(fast, slow)) return false;
+
+    FakeRandom fastCrossRng;
+    FakeRandom slowCrossRng;
+    Pet fastCross = hatchedPet(clock, fastCrossRng);
+    Pet slowCross = hatchedPet(clock, slowCrossRng);
+    auto snap = fastCross.capture();
+    snap.ageMillis = E::kChildAgeMs - 3 * B::kNeedsStepMs;
+    fastCross.restoreSnapshot(snap);
+    slowCross.restoreSnapshot(snap);
+    fastCross.applyOffline(8 * B::kNeedsStepMs, 8 * B::kNeedsStepMs);
+    for (int minute = 0; minute < 8; ++minute) {
+        slowCross.applyOffline(B::kNeedsStepMs, B::kNeedsStepMs);
+    }
+    if (!sameOfflineResult(fastCross, slowCross)) return false;
+    if (fastCross.state().stage != neripal::core::EvolutionStage::Child) return false;
+
+    FakeRandom fastDayRng;
+    FakeRandom slowDayRng;
+    Pet fastDay = hatchedPet(clock, fastDayRng);
+    Pet slowDay = hatchedPet(clock, slowDayRng);
+    const int dayMinutes = 24 * 60;
+    fastDay.applyOffline(E::kAdultAgeMs, E::kAdultAgeMs);
+    for (int minute = 0; minute < dayMinutes; ++minute) {
+        slowDay.applyOffline(B::kNeedsStepMs, B::kNeedsStepMs);
+    }
+    return sameOfflineResult(fastDay, slowDay) &&
+           fastDay.state().stage == neripal::core::EvolutionStage::Adult &&
+           fastDayRng.remaining() == 0 && slowDayRng.remaining() == 0;
+}
+
 }  // namespace
 
 int main() {
@@ -2482,6 +3036,26 @@ int main() {
         {"egg does not open episodes or history", eggDoesNotOpenEpisodesOrHistory},
         {"care actions rejected on egg", careActionsRejectedOnEgg},
         {"stage change starts new history and keeps previous", stageChangeStartsNewHistoryAndKeepsPrevious},
+        {"child to adult follows fixture rules", childToAdultFollowsFixtureRules},
+        {"special rule picks secret or adult b", specialRulePicksSecretOrAdultB},
+        {"higher priority rule wins", higherPriorityRuleWins},
+        {"fallback resolves empty history", fallbackResolvesEmptyHistory},
+        {"identical raising without rng matches", identicalRaisingWithoutRngMatches},
+        {"evolution rng consumed once", evolutionRngConsumedOnce},
+        {"later tick keeps form", laterTickKeepsForm},
+        {"restore snapshot keeps form without reroll", restoreSnapshotKeepsFormWithoutReroll},
+        {"adult to final keeps form", adultToFinalKeepsForm},
+        {"evolution context reads other stage and lifetime", evolutionContextReadsOtherStageAndLifetime},
+        {"offline without crossing keeps stage", offlineWithoutCrossingKeepsStage},
+        {"offline egg hatches", offlineEggHatches},
+        {"offline baby becomes child", offlineBabyBecomesChild},
+        {"offline child becomes adult once", offlineChildBecomesAdultOnce},
+        {"offline adult becomes final and keeps form", offlineAdultBecomesFinalKeepsForm},
+        {"offline long jump crosses in order", offlineLongJumpCrossesInOrder},
+        {"offline history splits across stages", offlineHistorySplitsAcrossStages},
+        {"offline urgent leaves window paused", offlineUrgentLeavesWindowPaused},
+        {"offline special roll is not repeated", offlineSpecialRollIsNotRepeated},
+        {"offline matches minute by minute", offlineMatchesMinuteByMinute},
     };
 
     int failures = 0;

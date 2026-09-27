@@ -59,7 +59,9 @@ const StageHistory& historyFor(const CareRecord& record, EvolutionStage stage) n
 
 TrainingLevel trainingLevel(const StageHistory& history) noexcept;
 
-// One simulated minute of trend counters for the stage the pet is in now.
+// Trend counters for the stage the pet is in now. `count` minutes share the
+// current health and happiness bands.
+void recordStageSteps(CareRecord& record, const PetState& state, std::uint32_t count) noexcept;
 void recordStageStep(CareRecord& record, const PetState& state) noexcept;
 
 // Awake minute only. Opens, decrements, expires, or closes episodes.

@@ -2,7 +2,7 @@
 
 #include "neripal/core/Balance.hpp"
 #include "neripal/core/CareHistory.hpp"
-#include "neripal/core/Evolution.hpp"
+#include "neripal/core/EvolutionNotice.hpp"
 #include "neripal/core/SleepCause.hpp"
 
 #include <cstdint>
@@ -22,9 +22,12 @@ struct PetSnapshot {
     std::uint32_t needsRemainderMs = 0;
     std::uint8_t needsStepPhase = 0;
     EvolutionStage stage = EvolutionStage::Egg;
+    FormId form = FormId::None;
     SleepCause sleepCause = SleepCause::None;
     std::uint32_t napRemainingMs = 0;
     CareRecord care{};
+    EvolutionNotice notices[kEvolutionNoticeCapacity]{};
+    std::uint8_t noticeCount = 0;
 };
 
 // If energy reaches kNapWakeEnergy before napRemainingMs elapses, Nap ends and

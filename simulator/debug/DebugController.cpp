@@ -38,10 +38,14 @@ void DebugController::forceEvolution() {
         case core::EvolutionStage::Egg:
             state.stage = core::EvolutionStage::Baby;
             state.ageMillis = 0;
+            state.form = core::FormId::Juvenile;
             break;
         case core::EvolutionStage::Baby:
             state.stage = core::EvolutionStage::Child;
             state.ageMillis = core::evolution::kChildAgeMs;
+            if (state.form == core::FormId::None) {
+                state.form = core::FormId::Juvenile;
+            }
             break;
         case core::EvolutionStage::Child:
             state.stage = core::EvolutionStage::Adult;

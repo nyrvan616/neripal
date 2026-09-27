@@ -42,6 +42,7 @@ using neripal::persist::StorageStatus;
 void hatch(Pet& pet) {
     auto state = pet.state();
     state.stage = EvolutionStage::Baby;
+    state.form = neripal::core::FormId::Juvenile;
     pet.restore(state);
 }
 

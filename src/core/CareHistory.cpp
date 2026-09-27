@@ -77,19 +77,26 @@ TrainingLevel trainingLevel(const StageHistory& history) noexcept {
     return TrainingLevel::Low;
 }
 
-void recordStageStep(CareRecord& record, const PetState& state) noexcept {
+void recordStageSteps(CareRecord& record, const PetState& state, std::uint32_t count) noexcept {
+    if (count == 0) {
+        return;
+    }
     auto& history = historyFor(record, state.stage);
-    ++history.steps;
+    history.steps += count;
     if (state.health >= balance::kHistoryGoodStat) {
-        ++history.healthGoodSteps;
+        history.healthGoodSteps += count;
     } else if (state.health < balance::kHistoryPoorStat) {
-        ++history.healthPoorSteps;
+        history.healthPoorSteps += count;
     }
     if (state.happiness >= balance::kHistoryGoodStat) {
-        ++history.happinessGoodSteps;
+        history.happinessGoodSteps += count;
     } else if (state.happiness < balance::kHistoryPoorStat) {
-        ++history.happinessPoorSteps;
+        history.happinessPoorSteps += count;
     }
+}
+
+void recordStageStep(CareRecord& record, const PetState& state) noexcept {
+    recordStageSteps(record, state, 1);
 }
 
 void ensureUrgentEpisodes(CareRecord& record, const PetState& state) noexcept {

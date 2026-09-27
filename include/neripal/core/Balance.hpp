@@ -52,6 +52,11 @@ inline constexpr std::uint16_t kTrainingFrequentCount = 18;
 inline constexpr int kHistoryGoodStat = 70;
 inline constexpr int kHistoryPoorStat = 40;
 
+// Fixture gates for the 0.6 rule table. Not approved evolution content.
+inline constexpr std::uint8_t kFixtureSpecialGoodPercent = 90;
+inline constexpr std::uint8_t kFixtureHappinessBranchPercent = 60;
+inline constexpr std::uint16_t kFixtureHappinessMaxMistakes = 2;
+
 inline constexpr int kHungerPerStep = 1;
 inline constexpr int kAwakeEnergyPerStep = -1;
 inline constexpr int kSleepEnergyPerStep = 2;
@@ -101,8 +106,9 @@ inline constexpr std::uint64_t kMaxAgeOfflineMs = 365ull * 24 * 60 * 60 * 1000;
 // Needs hit a fixed point within a few hundred minutes. The cap only bounds
 // how much of a gap is fed into that catch-up.
 inline constexpr std::uint64_t kMaxNeedsOfflineMs = 30ull * 24 * 60 * 60 * 1000;
-// Steps of one stable phase (awake, or player sleep) after which further
-// steps do not change stats. Nap is resolved before this cap applies.
+// Former offline early-exit. Catch-up no longer stops at this count: a full
+// needs cycle that leaves stats and stage unchanged may be applied in bulk,
+// and that bulk still stops at the next stage gate. Nap is never bulked.
 inline constexpr std::uint32_t kNeedsSettleSteps = 400;
 
 }  // namespace neripal::core::balance
