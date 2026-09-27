@@ -67,45 +67,55 @@ FakeRandom skipWalkIdleRng(std::size_t reelections) {
     return FakeRandom(std::move(samples));
 }
 
+// Existing care tests assume a creature that has already left the egg.
+template <typename Random>
+Pet hatchedPet(FakeClock& clock, Random& rng) {
+    Pet pet(clock, rng);
+    auto state = pet.state();
+    state.stage = neripal::core::EvolutionStage::Baby;
+    pet.restore(state);
+    return pet;
+}
+
 bool feedReducesHunger() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); const int before = pet.state().hunger;
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); const int before = pet.state().hunger;
     return pet.feed() == CareResult::Applied && pet.state().hunger < before;
 }
 bool hungerNeverBelowZero() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); for (int i = 0; i < 20; ++i) pet.feed();
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); for (int i = 0; i < 20; ++i) pet.feed();
     return pet.state().hunger == 0;
 }
 bool trainingConsumesEnergy() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); const int before = pet.state().energy;
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); const int before = pet.state().energy;
     return pet.train() == CareResult::Applied && pet.state().energy < before;
 }
 bool sleepingRecoversEnergy() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); auto state = pet.state(); state.energy = 50;
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); auto state = pet.state(); state.energy = 50;
     pet.restore(state); pet.sleep(); clock.advance(neripal::core::balance::kNeedsStepMs);
     pet.update(); return pet.state().energy > 50;
 }
 bool energyNeverAbove100() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); auto state = pet.state(); state.energy = 99;
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); auto state = pet.state(); state.energy = 99;
     pet.restore(state); pet.sleep(); clock.advance(neripal::core::balance::kNeedsStepMs * 10);
     pet.update(); return pet.state().energy == 100;
 }
 bool happinessIsClamped() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); auto state = pet.state(); state.happiness = 999;
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); auto state = pet.state(); state.happiness = 999;
     pet.restore(state); if (pet.state().happiness != 100) return false;
     state.happiness = -50; pet.restore(state); return pet.state().happiness == 0;
 }
 bool healthIsClamped() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); auto state = pet.state(); state.health = -1;
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); auto state = pet.state(); state.health = -1;
     pet.restore(state); if (pet.state().health != 0) return false;
     state.health = 101; pet.restore(state); return pet.state().health == 100;
 }
 bool controlledTimeIncreasesHunger() {
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng); const int before = pet.state().hunger;
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng); const int before = pet.state().hunger;
     clock.advance(neripal::core::balance::kNeedsStepMs); pet.update();
     return pet.state().hunger == before + neripal::core::balance::kHungerPerStep;
 }
 bool controlledTimeChangesEnergyByState() {
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng); const int awake = pet.state().energy;
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng); const int awake = pet.state().energy;
     clock.advance(neripal::core::balance::kNeedsStepMs); pet.update();
     if (pet.state().energy >= awake) return false;
     const int beforeSleep = pet.state().energy; pet.sleep();
@@ -113,12 +123,12 @@ bool controlledTimeChangesEnergyByState() {
     return pet.state().energy > beforeSleep;
 }
 bool noRealWaitIsNeeded() {
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng);
     clock.advance(3 * neripal::core::balance::kNeedsStepMs); pet.update();
     return pet.state().ageMillis == 3 * neripal::core::balance::kNeedsStepMs;
 }
 bool restoreNormalizesEveryStat() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     PetState invalid{};
     invalid.hunger = -5;
     invalid.happiness = 105;
@@ -137,14 +147,14 @@ bool restoreNormalizesEveryStat() {
            state.sleeping;
 }
 bool hygieneRestoreClampsLow() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     PetState invalid = pet.state();
     invalid.hygiene = -8;
     pet.restore(invalid);
     return pet.state().hygiene == 0;
 }
 bool evolutionUsesControlledAge() {
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng);
     clock.advance(neripal::core::evolution::kChildAgeMs); pet.update();
     if (pet.state().stage != neripal::core::EvolutionStage::Child) return false;
     clock.advance(neripal::core::evolution::kAdultAgeMs -
@@ -153,7 +163,7 @@ bool evolutionUsesControlledAge() {
     return pet.state().stage == neripal::core::EvolutionStage::Adult;
 }
 bool eggHatchesWithControlledAge() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng); auto state = pet.state();
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); auto state = pet.state();
     state.stage = neripal::core::EvolutionStage::Egg;
     state.ageMillis = 0;
     pet.restore(state);
@@ -163,7 +173,7 @@ bool eggHatchesWithControlledAge() {
     return pet.state().stage == neripal::core::EvolutionStage::Baby;
 }
 bool cleanRaisesHygiene() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hygiene = 40;
     pet.restore(state);
@@ -171,21 +181,21 @@ bool cleanRaisesHygiene() {
            pet.state().hygiene == 40 + neripal::core::balance::kCleanHygiene;
 }
 bool cleanDoesNotExceedMax() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hygiene = 90;
     pet.restore(state);
     return pet.clean() == CareResult::Applied && pet.state().hygiene == 100;
 }
 bool awakeTimeLowersHygiene() {
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng);
     const int before = pet.state().hygiene;
     clock.advance(neripal::core::balance::kNeedsStepMs);
     pet.update();
     return pet.state().hygiene == before + neripal::core::balance::kHygienePerAwakeStep;
 }
 bool sleepDoesNotLowerHygiene() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hygiene = 50;
     pet.restore(state);
@@ -196,7 +206,7 @@ bool sleepDoesNotLowerHygiene() {
 }
 bool highHungerLowersHappinessOnlyWhenUrgent() {
     namespace B = neripal::core::balance;
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hunger = B::kHungerAttention;
     state.hygiene = 80;
@@ -219,7 +229,7 @@ bool highHungerLowersHappinessOnlyWhenUrgent() {
 }
 bool lowHygieneLowersHappinessOnlyWhenUrgent() {
     namespace B = neripal::core::balance;
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hunger = 10;
     state.energy = 80;
@@ -241,7 +251,7 @@ bool lowHygieneLowersHappinessOnlyWhenUrgent() {
     return pet.state().hygiene == B::kLowNeedUrgent - 1 && pet.state().happiness == 49;
 }
 bool zeroHygieneLowersHealth() {
-    FakeClock clock; XorShift32 rng(1u); Pet pet(clock, rng);
+    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hunger = 10;
     state.energy = 80;
@@ -253,7 +263,7 @@ bool zeroHygieneLowersHealth() {
     return pet.state().hygiene == 0 && pet.state().health == 49;
 }
 bool feedRejectedWhenAsleep() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.sleeping = true;
     pet.restore(state);
@@ -262,7 +272,7 @@ bool feedRejectedWhenAsleep() {
            sameAutonomySnapshot(before, pet.state());
 }
 bool trainRejectedWhenAsleep() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.sleeping = true;
     state.energy = 5;
@@ -271,7 +281,7 @@ bool trainRejectedWhenAsleep() {
     return pet.train() == CareResult::RejectedAsleep && sameCareStats(before, pet.state());
 }
 bool cleanRejectedWhenAsleep() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.sleeping = true;
     pet.restore(state);
@@ -279,7 +289,7 @@ bool cleanRejectedWhenAsleep() {
     return pet.clean() == CareResult::RejectedAsleep && sameCareStats(before, pet.state());
 }
 bool trainRejectedWithoutEnergy() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.energy = -neripal::core::balance::kTrainEnergy - 1;
     pet.restore(state);
@@ -289,21 +299,21 @@ bool trainRejectedWithoutEnergy() {
            pet.state().activityDurationMs == neripal::core::balance::kTiredDurationMs;
 }
 bool sleepRejectedWhenAlreadySleeping() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     pet.sleep();
     const auto before = pet.state();
     return pet.sleep() == CareResult::RejectedAlreadySleeping &&
            sameCareStats(before, pet.state()) && sameAutonomySnapshot(before, pet.state());
 }
 bool wakeRejectedWhenAlreadyAwake() {
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     const auto before = pet.state();
     return pet.wake() == CareResult::RejectedAlreadyAwake && sameCareStats(before, pet.state()) &&
            sameAutonomySnapshot(before, pet.state());
 }
 bool applyDispatchesCareActions() {
     using neripal::core::CareAction;
-    FakeClock clock; FakeRandom rng; Pet pet(clock, rng);
+    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
     const int hungerBefore = pet.state().hunger;
     if (pet.apply(CareAction::Feed) != CareResult::Applied ||
         pet.state().hunger >= hungerBefore) {
@@ -385,7 +395,7 @@ bool nextBoundedZeroDoesNotConsume() {
 bool constructorDoesNotConsumeRng() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     try {
         (void)rng.nextU32();
         return false;
@@ -400,7 +410,7 @@ bool constructorDoesNotConsumeRng() {
 bool sleepingUpdateDoesNotConsumeRng() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.sleep() != CareResult::Applied || pet.state().activity != Activity::Sleep) {
         return false;
     }
@@ -532,7 +542,7 @@ bool restoreResetsTransientActivity() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetState incoming = pet.state();
     incoming.x = 3;
     incoming.facing = -1;
@@ -551,7 +561,7 @@ bool restoreResetsTransientActivity() {
 bool restoreSleepingStartsSleepActivity() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetState incoming = pet.state();
     incoming.sleeping = true;
     incoming.activity = Activity::Walk;
@@ -566,7 +576,7 @@ bool idleRngZeroGivesMinDuration() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.state().activity != Activity::Idle ||
         pet.state().activityDurationMs != B::kIdleDurationMinMs) {
         return false;
@@ -583,7 +593,7 @@ bool idleLeftoverFeedsNextDecideTimer() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(B::kIdleDurationMinMs + 200);
     pet.update();
     return pet.state().activity == Activity::Idle &&
@@ -596,7 +606,7 @@ bool idleRngSelectsMaxDurationAndGlance() {
     const auto span = B::kIdleDurationMaxMs - B::kIdleDurationMinMs;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, span, 1u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(B::kIdleDurationMinMs);
     pet.update();
     return pet.state().activityDurationMs == B::kIdleDurationMaxMs &&
@@ -608,7 +618,7 @@ bool tiredIdleAddsDurationBonus() {
     FakeClock clock;
     // Tired wanderP is 10; sample 10 skips Walk. Variant pool is Slump (nextBounded(1)).
     FakeRandom rng({10u, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto tired = pet.state();
     tired.energy = B::kTiredMoodEnergy;
     pet.restore(tired);
@@ -621,7 +631,7 @@ bool tiredIdleAddsDurationBonus() {
 bool eggFreezesIdleDecideTimer() {
     FakeClock clock;
     FakeRandom rng({9u, 8u, 7u, 6u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto egg = pet.state();
     egg.stage = neripal::core::EvolutionStage::Egg;
     egg.ageMillis = 0;
@@ -636,7 +646,7 @@ bool eggFreezesIdleDecideTimer() {
 bool sleepFreezesIdleDecideTimer() {
     FakeClock clock;
     FakeRandom rng({9u, 8u, 7u, 6u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.sleep() != CareResult::Applied) return false;
     clock.advance(10 * neripal::core::balance::kIdleDurationMinMs);
     pet.update();
@@ -647,7 +657,7 @@ bool sleepFreezesIdleDecideTimer() {
 bool wakeResumesIdleWithoutRng() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.sleep() != CareResult::Applied) return false;
     if (pet.wake() != CareResult::Applied) return false;
     return pet.state().activity == Activity::Idle &&
@@ -700,7 +710,7 @@ bool catchUpRemainderSurvivesTransitionCap() {
 
     FakeClock clock;
     FakeRandom rng = skipWalkIdleRng(16);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(total);
     pet.update();
     if (pet.state().activity != Activity::Idle || pet.state().activityElapsedMs != 0 ||
@@ -735,7 +745,7 @@ bool pollEventConsumesOnce() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
 
     GameEvent leftover{};
     leftover.kind = GameEventKind::ActivityFinished;
@@ -806,7 +816,7 @@ bool petEventBufferDoesNotGrowPastCapacity() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 0u, kSkipWalk, 0u, 1u, kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(3 * B::kIdleDurationMinMs);
     pet.update();
 
@@ -830,7 +840,7 @@ bool petEventBufferDoesNotGrowPastCapacity() {
 bool sleepWakeEmitUncompletedInterrupt() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (drainEvents(pet, nullptr, 4) != 0) return false;
 
     if (pet.sleep() != CareResult::Applied) return false;
@@ -865,7 +875,7 @@ bool sleepWakeEmitUncompletedInterrupt() {
 bool rejectedCareDoesNotEmitEvents() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const auto before = pet.state();
     if (pet.wake() != CareResult::RejectedAlreadyAwake || !sameCareStats(before, pet.state())) {
         return false;
@@ -883,7 +893,7 @@ bool rejectedCareDoesNotEmitEvents() {
 bool frozenIdleDoesNotEmitEvents() {
     FakeClock clock;
     FakeRandom rng({9u, 8u, 7u, 6u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto egg = pet.state();
     egg.stage = neripal::core::EvolutionStage::Egg;
     egg.ageMillis = 0;
@@ -894,6 +904,9 @@ bool frozenIdleDoesNotEmitEvents() {
     if (pet.pollEvent(event)) return false;
 
     pet.reset();
+    auto born = pet.state();
+    born.stage = neripal::core::EvolutionStage::Baby;
+    pet.restore(born);
     if (pet.sleep() != CareResult::Applied) return false;
     if (drainEvents(pet, nullptr, 4) != 2) return false;
     clock.advance(10 * neripal::core::balance::kIdleDurationMinMs);
@@ -905,7 +918,7 @@ bool restoreClearsQueuedEvents() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(B::kIdleDurationMinMs);
     pet.update();
     GameEvent event{};
@@ -920,7 +933,7 @@ bool walkUsesScriptedFacingAndDistance() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(B::kIdleDurationMinMs);
     pet.update();
     const auto walkMs = static_cast<std::uint32_t>(B::kWalkMinDistancePx) * B::kWalkMsPerPixel;
@@ -933,7 +946,7 @@ bool walkAdvancesXDeterministically() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const auto walkMs = static_cast<std::uint32_t>(B::kWalkMinDistancePx) * B::kWalkMsPerPixel;
     clock.advance(B::kIdleDurationMinMs + walkMs / 2);
     pet.update();
@@ -947,7 +960,7 @@ bool walkCompletesToIdleWithoutWanderRoll() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u, 0u, 0u, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const auto walkMs = static_cast<std::uint32_t>(B::kWalkMinDistancePx) * B::kWalkMsPerPixel;
     clock.advance(B::kIdleDurationMinMs + walkMs);
     pet.update();
@@ -995,7 +1008,7 @@ bool walkStepSizeDoesNotChangePosition() {
 bool eggDoesNotWalk() {
     FakeClock clock;
     FakeRandom rng = zeroRng(8);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto egg = pet.state();
     egg.stage = neripal::core::EvolutionStage::Egg;
     egg.ageMillis = 0;
@@ -1012,7 +1025,7 @@ bool feedAppliedOnWalkStartsEat() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(B::kIdleDurationMinMs + 100);
     pet.update();
     if (pet.state().activity != Activity::Walk) return false;
@@ -1027,7 +1040,7 @@ bool eatCompletesToIdle() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.feed() != CareResult::Applied || pet.state().activity != Activity::Eat) return false;
     clock.advance(B::kEatDurationMs);
     pet.update();
@@ -1038,13 +1051,14 @@ bool trainAndCleanAppliedStartHappy() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.train() != CareResult::Applied || pet.state().activity != Activity::Happy) {
         return false;
     }
     pet.reset();
     auto dirty = pet.state();
     dirty.hygiene = 20;
+    dirty.stage = neripal::core::EvolutionStage::Baby;
     pet.restore(dirty);
     return pet.clean() == CareResult::Applied && pet.state().activity == Activity::Happy &&
            pet.state().activityDurationMs == B::kHappyDurationMs;
@@ -1054,7 +1068,7 @@ bool rejectedNoEnergyDoesNotRestartTired() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto low = pet.state();
     low.energy = -B::kTrainEnergy - 1;
     pet.restore(low);
@@ -1071,7 +1085,7 @@ bool rejectedNoEnergyDoesNotRestartTired() {
 bool rejectedAlreadyAwakeKeepsIdle() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const auto before = pet.state();
     return pet.wake() == CareResult::RejectedAlreadyAwake &&
            sameAutonomySnapshot(before, pet.state());
@@ -1149,7 +1163,7 @@ bool restoreDoesNotFireMoodOneShot() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto dirty = pet.state();
     dirty.hygiene = 0;
     pet.restore(dirty);
@@ -1161,7 +1175,7 @@ bool napStartsWhenEnergyCritical() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto tired = pet.state();
     tired.energy = B::kAutonomousNapEnergy;
     pet.restore(tired);
@@ -1175,7 +1189,7 @@ bool napAutoWakesToIdle() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u, kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto tired = pet.state();
     tired.energy = B::kAutonomousNapEnergy;
     pet.restore(tired);
@@ -1189,7 +1203,7 @@ bool napDoesNotWakeWhileEnergyLow() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto tired = pet.state();
     tired.energy = B::kAutonomousNapEnergy;
     pet.restore(tired);
@@ -1206,7 +1220,7 @@ bool feedRejectedDuringNapKeepsNap() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto tired = pet.state();
     tired.energy = B::kAutonomousNapEnergy;
     pet.restore(tired);
@@ -1222,7 +1236,7 @@ bool playerSleepBlocksNapAndWalk() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng = zeroRng(8);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto low = pet.state();
     low.energy = B::kAutonomousNapEnergy;
     pet.restore(low);
@@ -1237,7 +1251,7 @@ bool playerWakeEndsNap() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto tired = pet.state();
     tired.energy = B::kAutonomousNapEnergy;
     pet.restore(tired);
@@ -1252,7 +1266,7 @@ bool happyIdleUsesBouncePool() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 1u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto happy = pet.state();
     happy.happiness = B::kHappyMoodHappiness + 1;
     pet.restore(happy);
@@ -1264,7 +1278,7 @@ bool happyIdleUsesBouncePool() {
 bool captureRestorePlayerSleep() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.sleep() != CareResult::Applied) return false;
     const auto snap = pet.capture();
     if (snap.sleepCause != SleepCause::Player || snap.napRemainingMs != 0) return false;
@@ -1279,7 +1293,7 @@ bool captureRestoreNapKeepsRemaining() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = 12'000;
@@ -1295,7 +1309,7 @@ bool captureDoesNotPersistWalkPose() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetState walk = pet.state();
     walk.activity = Activity::Walk;
     walk.x = 40;
@@ -1311,7 +1325,7 @@ bool captureDoesNotPersistWalkPose() {
 bool restoreSnapshotPreservesNeedsRemainder() {
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(30'000);
     pet.update();
     const auto snap = pet.capture();
@@ -1324,7 +1338,7 @@ bool restoreSnapshotPreservesNeedsRemainder() {
 bool restoreSnapshotZeroNapRemainingWakes() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = 0;
@@ -1337,7 +1351,7 @@ bool restoreSnapshotOversizedNapWakes() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = B::kNapDurationMaxMs + 1;
@@ -1348,7 +1362,7 @@ bool restoreSnapshotOversizedNapWakes() {
 bool restoreSnapshotDoesNotConsumeRng() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = 8'000;
@@ -1359,7 +1373,7 @@ bool restoreSnapshotDoesNotConsumeRng() {
 bool restoreSnapshotClearsQueuedEvents() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.sleep();
     GameEvent event{};
     if (!pet.pollEvent(event)) return false;
@@ -1376,7 +1390,7 @@ bool restoredNapEndsWhenEnergyAtWakeThreshold() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({kSkipWalk, 0u, 0u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = B::kNapDurationMaxMs;
@@ -1411,7 +1425,7 @@ int drainEvents(Pet& pet) {
 bool offlineZeroDoesNotChangeNeeds() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const auto before = pet.capture();
     pet.applyOffline(0, 0);
     const auto after = pet.capture();
@@ -1422,7 +1436,7 @@ bool offlineZeroDoesNotChangeNeeds() {
 bool offlineThirtySecondsKeepsRemainder() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const int hunger = pet.state().hunger;
     pet.applyOffline(30'000, 30'000);
     const auto snap = pet.capture();
@@ -1433,7 +1447,7 @@ bool offlineThirtySecondsKeepsRemainder() {
 bool offlineNinetySecondsAppliesOneNeedStep() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const int hunger = pet.state().hunger;
     pet.applyOffline(90'000, 90'000);
     const auto snap = pet.capture();
@@ -1445,7 +1459,7 @@ bool offlineNinetySecondsAppliesOneNeedStep() {
 bool offlineUsesExistingRemainder() {
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(40'000);
     pet.update();
     const int hunger = pet.state().hunger;
@@ -1457,7 +1471,7 @@ bool offlineUsesExistingRemainder() {
 bool offlinePlayerSleepStaysAsleep() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.sleep() != CareResult::Applied) return false;
     const int hygiene = pet.state().hygiene;
     const int energy = pet.state().energy;
@@ -1473,7 +1487,7 @@ bool offlineNapContinues() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = 15'000;
@@ -1489,7 +1503,7 @@ bool offlineNapContinues() {
 bool offlineNapEndsByTimeThenAwake() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = 10'000;
@@ -1509,7 +1523,7 @@ bool offlineNapEndsEarlyWhenEnergyReachesWake() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     PetSnapshot snap = pet.capture();
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = 20'000;
@@ -1529,8 +1543,8 @@ bool offlineFortyFiveDaysCapsNeedsOnly() {
     FakeClock clock;
     FakeRandom fastRng;
     FakeRandom cappedRng;
-    Pet fast(clock, fastRng);
-    Pet capped(clock, cappedRng);
+    Pet fast = hatchedPet(clock, fastRng);
+    Pet capped = hatchedPet(clock, cappedRng);
     fast.applyOffline(45ull * kDayMs, 45ull * kDayMs + 30'000);
     capped.applyOffline(0, B::kMaxNeedsOfflineMs);
     return fast.capture().ageMillis == 45ull * kDayMs &&
@@ -1542,8 +1556,8 @@ bool offlineFourHundredDaysCapsAgeAndNeeds() {
     FakeClock clock;
     FakeRandom fastRng;
     FakeRandom cappedRng;
-    Pet fast(clock, fastRng);
-    Pet capped(clock, cappedRng);
+    Pet fast = hatchedPet(clock, fastRng);
+    Pet capped = hatchedPet(clock, cappedRng);
     fast.applyOffline(400ull * kDayMs, 400ull * kDayMs + 30'000);
     capped.applyOffline(0, B::kMaxNeedsOfflineMs);
     return fast.capture().ageMillis == B::kMaxAgeOfflineMs &&
@@ -1554,7 +1568,7 @@ bool offlineDoesNotConsumeRngOrWalk() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng({0u, 0u, 0u, 7u, 8u, 9u});
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     clock.advance(B::kIdleDurationMinMs + B::kWalkMsPerPixel * 4);
     pet.update();
     if (pet.state().activity != Activity::Walk || pet.state().x == B::kPetHomeX) return false;
@@ -1576,12 +1590,13 @@ bool offlineSettleMatchesMinuteOracle() {
     snap.hygiene = 100;
     snap.needsRemainderMs = 12'345;
     snap.sleepCause = SleepCause::None;
+    snap.stage = neripal::core::EvolutionStage::Baby;
 
-    Pet fast(clock, fastRng);
+    Pet fast = hatchedPet(clock, fastRng);
     fast.restoreSnapshot(snap);
     fast.applyOffline(0, 30ull * kDayMs);
 
-    Pet slow(clock, slowRng);
+    Pet slow = hatchedPet(clock, slowRng);
     slow.restoreSnapshot(snap);
     const std::uint64_t minutes = 30ull * 24 * 60;
     for (std::uint64_t i = 0; i < minutes; ++i) {
@@ -1605,12 +1620,13 @@ bool offlinePlayerSleepSettleMatchesMinuteOracle() {
     snap.hygiene = 80;
     snap.needsRemainderMs = 1'000;
     snap.sleepCause = SleepCause::Player;
+    snap.stage = neripal::core::EvolutionStage::Baby;
 
-    Pet fast(clock, fastRng);
+    Pet fast = hatchedPet(clock, fastRng);
     fast.restoreSnapshot(snap);
     fast.applyOffline(0, 1'000ull * 60'000);
 
-    Pet slow(clock, slowRng);
+    Pet slow = hatchedPet(clock, slowRng);
     slow.restoreSnapshot(snap);
     for (int i = 0; i < 1000; ++i) {
         slow.applyOffline(0, 60'000);
@@ -1646,7 +1662,7 @@ bool oneUrgentDropsHappinessOnce() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hunger = B::kHungerUrgent;
     state.hygiene = B::kLowNeedUrgent;
@@ -1665,7 +1681,7 @@ bool affectionUrgentDoesNotLowerHealth() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.affection = 0;
     state.hunger = 10;
@@ -1684,7 +1700,7 @@ bool awakeAffectionAndStimulationFollowCadence() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const int affection = pet.state().affection;
     const int stimulation = pet.state().stimulation;
     clock.advance(2 * B::kNeedsStepMs);
@@ -1699,7 +1715,7 @@ bool sleepSlowsHygieneAndAffectionAndHoldsStimulation() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const int hygiene = pet.state().hygiene;
     const int affection = pet.state().affection;
     const int stimulation = pet.state().stimulation;
@@ -1723,7 +1739,7 @@ bool petRaisesAffectionWithoutStimulation() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const int stimulation = pet.state().stimulation;
     const int happiness = pet.state().happiness;
     return pet.pet() == CareResult::Applied &&
@@ -1737,7 +1753,7 @@ bool playRaisesStimulationWithoutAffection() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const int affection = pet.state().affection;
     const int energy = pet.state().energy;
     const int hunger = pet.state().hunger;
@@ -1754,7 +1770,7 @@ bool trainRaisesStimulationWithoutAffection() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.health = 90;
     pet.restore(state);
@@ -1768,7 +1784,7 @@ bool playRejectedWithoutEnergy() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     auto low = pet.state();
     low.energy = -B::kPlayEnergy - 1;
     pet.restore(low);
@@ -1780,7 +1796,7 @@ bool playRejectedWithoutEnergy() {
 bool petRejectedWhenAsleep() {
     FakeClock clock;
     FakeRandom rng;
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.sleep() != CareResult::Applied) return false;
     const auto before = pet.state();
     return pet.pet() == CareResult::RejectedAsleep && sameCareStats(before, pet.state());
@@ -1790,7 +1806,7 @@ bool captureRestoresAffectionAndNeedsPhase() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     if (pet.pet() != CareResult::Applied) return false;
     clock.advance(3 * B::kNeedsStepMs);
     pet.update();
@@ -1819,13 +1835,14 @@ bool offlineNapSplitSettleMatchesMinuteOracle() {
     snap.needsRemainderMs = 50'000;
     snap.sleepCause = SleepCause::Nap;
     snap.napRemainingMs = 15'000;
+    snap.stage = neripal::core::EvolutionStage::Baby;
 
     const std::uint64_t elapsed = 800ull * 60'000;
-    Pet fast(clock, fastRng);
+    Pet fast = hatchedPet(clock, fastRng);
     fast.restoreSnapshot(snap);
     fast.applyOffline(0, elapsed);
 
-    Pet slow(clock, slowRng);
+    Pet slow = hatchedPet(clock, slowRng);
     slow.restoreSnapshot(snap);
     for (int i = 0; i < 800; ++i) {
         slow.applyOffline(0, 60'000);
@@ -1860,7 +1877,7 @@ bool attentionDoesNotOpenCareEpisode() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerAttention));
     advanceMinutes(clock, pet, 1);
     const auto& episode = pet.careRecord().episodes[0];
@@ -1875,7 +1892,7 @@ bool urgentOpensEpisodeWithoutMistake() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1);
     const auto& episode = pet.careRecord().episodes[0];
@@ -1891,7 +1908,7 @@ bool careBeforeTimeoutAddsNoMistake() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps - 1);
     if (pet.careRecord().episodes[0].stepsRemaining != 1) return false;
@@ -1908,7 +1925,7 @@ bool careTimeoutAddsExactlyOneMistake() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps);
     const auto& episode = pet.careRecord().episodes[0];
@@ -1925,7 +1942,7 @@ bool stayingUrgentDoesNotAddAnotherMistake() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps + 30);
     const auto& history =
@@ -1939,7 +1956,7 @@ bool leavingUrgentClosesEpisode() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1);
     if (pet.careRecord().episodes[0].state != EpisodeState::Open) return false;
@@ -1955,7 +1972,7 @@ bool reenteringUrgentOpensNewEpisode() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1 + B::kAttentionWindowSteps);
     if (pet.careRecord().lifetimeCareMistakes != 1) return false;
@@ -1977,7 +1994,7 @@ bool sleepPausesAttentionWindow() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1);
     if (pet.sleep() != CareResult::Applied) return false;
@@ -2000,7 +2017,7 @@ bool offlineDoesNotTouchWindowOrMistakes() {
     using neripal::core::EpisodeState;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1);
     const auto stepsBefore =
@@ -2014,7 +2031,7 @@ bool offlineDoesNotTouchWindowOrMistakes() {
         return false;
     }
 
-    Pet untouched(clock, rng);
+    Pet untouched = hatchedPet(clock, rng);
     untouched.restore(watchedHunger(B::kHungerAttention));
     untouched.applyOffline(30 * B::kNeedsStepMs, 30 * B::kNeedsStepMs);
     return untouched.careRecord().episodes[0].state == EpisodeState::None &&
@@ -2026,7 +2043,7 @@ bool responseTimeCountsOpenMinutes() {
     namespace B = neripal::core::balance;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     pet.restore(watchedHunger(B::kHungerUrgent));
     advanceMinutes(clock, pet, 1 + 4);
     if (pet.feed() != CareResult::Applied) return false;
@@ -2042,7 +2059,7 @@ bool trainIncrementsTrainingCountAndPlayDoesNot() {
     using neripal::core::trainingLevel;
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     const auto& history =
         neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby);
     if (pet.play() != CareResult::Applied || history.trainCount != 0) return false;
@@ -2075,7 +2092,7 @@ bool trainIncrementsTrainingCountAndPlayDoesNot() {
 bool stageHistoryIsKeptWhenAgeMovesStage() {
     FakeClock clock;
     XorShift32 rng(1u);
-    Pet pet(clock, rng);
+    Pet pet = hatchedPet(clock, rng);
     advanceMinutes(clock, pet, 1);
     const auto babySteps =
         neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps;
@@ -2094,6 +2111,233 @@ bool stageHistoryIsKeptWhenAgeMovesStage() {
                babySteps &&
            neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child).steps ==
                1;
+}
+
+bool newGameStartsAsEgg() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    return pet.state().stage == neripal::core::EvolutionStage::Egg &&
+           pet.feed() == CareResult::RejectedEgg;
+}
+
+bool eggDoesNotChangeBeforeHatch() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const auto before = pet.state();
+    clock.advance(E::kEggHatchAgeMs - 1);
+    pet.update();
+    const auto after = pet.state();
+    return after.stage == neripal::core::EvolutionStage::Egg &&
+           after.ageMillis == E::kEggHatchAgeMs - 1 && sameCareStats(before, after);
+}
+
+bool eggHatchesAtThreshold() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const int hunger = pet.state().hunger;
+    clock.advance(E::kEggHatchAgeMs);
+    pet.update();
+    GameEvent event{};
+    if (pet.state().stage != neripal::core::EvolutionStage::Baby) return false;
+    if (pet.state().hunger != hunger) return false;
+    if (!pet.pollEvent(event) || event.kind != GameEventKind::Hatched) return false;
+    return !pet.pollEvent(event);
+}
+
+bool babyBecomesChildAtAge() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
+    clock.advance(E::kChildAgeMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Child &&
+           pet.state().ageMillis == E::kChildAgeMs;
+}
+
+bool childBecomesAdultAtAge() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = pet.capture();
+    snap.stage = neripal::core::EvolutionStage::Child;
+    snap.ageMillis = E::kChildAgeMs;
+    pet.restoreSnapshot(snap);
+    clock.advance(E::kAdultAgeMs - E::kChildAgeMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Adult;
+}
+
+bool adultBecomesFinalAtAge() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = pet.capture();
+    snap.stage = neripal::core::EvolutionStage::Adult;
+    snap.ageMillis = E::kAdultAgeMs;
+    pet.restoreSnapshot(snap);
+    clock.advance(E::kFinalAgeMs - E::kAdultAgeMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Final;
+}
+
+bool longUpdateDoesNotSkipStages() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    clock.advance(E::kAdultAgeMs);
+    pet.update();
+    const auto egg =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Egg).steps;
+    const auto baby =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps;
+    const auto child =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child).steps;
+    const auto adult =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Adult).steps;
+    return pet.state().stage == neripal::core::EvolutionStage::Adult && egg == 0 &&
+           baby == 5u * 60u && child == 18u * 60u && adult == 0;
+}
+
+bool overdueAgeAdvancesOnlyOneStage() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    auto snap = pet.capture();
+    snap.stage = neripal::core::EvolutionStage::Egg;
+    snap.ageMillis = E::kFinalAgeMs;
+    pet.restoreSnapshot(snap);
+    if (pet.state().stage != neripal::core::EvolutionStage::Egg) return false;
+    clock.advance(neripal::core::balance::kNeedsStepMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Baby &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child)
+                   .steps == 0;
+}
+
+bool restoreKeepsPersistedStage() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    auto adult = pet.state();
+    adult.stage = neripal::core::EvolutionStage::Adult;
+    adult.ageMillis = 0;
+    pet.restore(adult);
+    if (pet.state().stage != neripal::core::EvolutionStage::Adult) return false;
+    auto egg = pet.state();
+    egg.stage = neripal::core::EvolutionStage::Egg;
+    egg.ageMillis = E::kFinalAgeMs;
+    pet.restore(egg);
+    return pet.state().stage == neripal::core::EvolutionStage::Egg &&
+           pet.state().ageMillis == E::kFinalAgeMs;
+}
+
+bool restoreSnapshotKeepsPersistedStage() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet = hatchedPet(clock, rng);
+    auto snap = pet.capture();
+    snap.stage = neripal::core::EvolutionStage::Final;
+    snap.ageMillis = 0;
+    pet.restoreSnapshot(snap);
+    if (pet.state().stage != neripal::core::EvolutionStage::Final) return false;
+    snap.stage = neripal::core::EvolutionStage::Egg;
+    snap.ageMillis = E::kAdultAgeMs;
+    pet.restoreSnapshot(snap);
+    return pet.state().stage == neripal::core::EvolutionStage::Egg &&
+           pet.state().ageMillis == E::kAdultAgeMs;
+}
+
+bool eggDoesNotDegradeStats() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const auto before = pet.state();
+    clock.advance(30 * neripal::core::balance::kNeedsStepMs);
+    pet.update();
+    return pet.state().stage == neripal::core::EvolutionStage::Egg &&
+           sameCareStats(before, pet.state());
+}
+
+bool eggDoesNotOpenEpisodesOrHistory() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    auto state = pet.state();
+    state.hunger = 100;
+    state.energy = 0;
+    state.hygiene = 0;
+    state.affection = 0;
+    state.stimulation = 0;
+    pet.restore(state);
+    advanceMinutes(clock, pet, 20);
+    if (pet.state().stage != neripal::core::EvolutionStage::Egg) return false;
+    if (pet.state().hunger != 100 || pet.state().energy != 0 || pet.state().hygiene != 0) {
+        return false;
+    }
+    const auto& care = pet.careRecord();
+    if (care.lifetimeCareMistakes != 0) return false;
+    if (neripal::core::historyFor(care, neripal::core::EvolutionStage::Egg).steps != 0) {
+        return false;
+    }
+    for (const auto& episode : care.episodes) {
+        if (episode.state != neripal::core::EpisodeState::None) return false;
+    }
+    return true;
+}
+
+bool careActionsRejectedOnEgg() {
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const auto before = pet.state();
+    const CareResult results[] = {
+        pet.feed(), pet.train(), pet.sleep(), pet.wake(),
+        pet.clean(), pet.pet(), pet.play(), pet.apply(neripal::core::CareAction::Feed),
+    };
+    for (const auto result : results) {
+        if (result != CareResult::RejectedEgg) return false;
+    }
+    return sameCareStats(before, pet.state()) && !pet.state().sleeping;
+}
+
+bool stageChangeStartsNewHistoryAndKeepsPrevious() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
+    advanceMinutes(clock, pet, 1);
+    const auto babyBefore =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps;
+    if (babyBefore != 1) return false;
+    const auto left = E::kChildAgeMs - pet.state().ageMillis;
+    clock.advance(left);
+    pet.update();
+    if (pet.state().stage != neripal::core::EvolutionStage::Child) return false;
+    const auto babyAtGate =
+        neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby).steps;
+    if (babyAtGate <= babyBefore) return false;
+    if (neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child).steps !=
+        0) {
+        return false;
+    }
+    advanceMinutes(clock, pet, 1);
+    return pet.state().stage == neripal::core::EvolutionStage::Child &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Baby)
+                   .steps == babyAtGate &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child)
+                   .steps == 1;
 }
 
 }  // namespace
@@ -2224,6 +2468,20 @@ int main() {
         {"response time counts open minutes", responseTimeCountsOpenMinutes},
         {"train increments training count and play does not", trainIncrementsTrainingCountAndPlayDoesNot},
         {"stage history is kept when age moves stage", stageHistoryIsKeptWhenAgeMovesStage},
+        {"new game starts as egg", newGameStartsAsEgg},
+        {"egg does not change before hatch", eggDoesNotChangeBeforeHatch},
+        {"egg hatches at threshold", eggHatchesAtThreshold},
+        {"baby becomes child at age", babyBecomesChildAtAge},
+        {"child becomes adult at age", childBecomesAdultAtAge},
+        {"adult becomes final at age", adultBecomesFinalAtAge},
+        {"long update does not skip stages", longUpdateDoesNotSkipStages},
+        {"overdue age advances only one stage", overdueAgeAdvancesOnlyOneStage},
+        {"restore keeps persisted stage", restoreKeepsPersistedStage},
+        {"restore snapshot keeps persisted stage", restoreSnapshotKeepsPersistedStage},
+        {"egg does not degrade stats", eggDoesNotDegradeStats},
+        {"egg does not open episodes or history", eggDoesNotOpenEpisodesOrHistory},
+        {"care actions rejected on egg", careActionsRejectedOnEgg},
+        {"stage change starts new history and keeps previous", stageChangeStartsNewHistoryAndKeepsPrevious},
     };
 
     int failures = 0;

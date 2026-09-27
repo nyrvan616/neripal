@@ -52,7 +52,11 @@ private:
     static int clampStat(int value) noexcept;
     CareResult applyStatAction(CareAction action);
     void applyNeedsStep();
-    void updateEvolution();
+    std::uint64_t millisUntilNextStage() const noexcept;
+    bool advanceOneStage() noexcept;
+    void pushHatched() noexcept;
+    void applyTimeOnCurrentStage(std::uint64_t elapsed);
+    void consumeElapsed(std::uint64_t elapsed);
     void anchorClock();
 
     IClock& clock_;

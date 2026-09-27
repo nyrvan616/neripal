@@ -21,7 +21,7 @@ struct PetSnapshot {
     std::uint64_t ageMillis = 0;
     std::uint32_t needsRemainderMs = 0;
     std::uint8_t needsStepPhase = 0;
-    EvolutionStage stage = EvolutionStage::Baby;
+    EvolutionStage stage = EvolutionStage::Egg;
     SleepCause sleepCause = SleepCause::None;
     std::uint32_t napRemainingMs = 0;
     CareRecord care{};

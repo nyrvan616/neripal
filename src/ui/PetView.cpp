@@ -115,8 +115,10 @@ constexpr Sprite kFrogSprite{
 const Sprite& spriteForStage(core::EvolutionStage stage) {
     switch (stage) {
         case core::EvolutionStage::Egg: return kEggSprite;
+        case core::EvolutionStage::Baby: return kTadpoleSprite;
         case core::EvolutionStage::Child: return kLeggedTadpoleSprite;
         case core::EvolutionStage::Adult: return kFrogSprite;
+        case core::EvolutionStage::Final: return kFrogSprite;
         default: return kTadpoleSprite;
     }
 }
@@ -250,8 +252,10 @@ const char* menuLabel(int menuIndex, bool sleeping) {
 const char* stageLabel(core::EvolutionStage stage) {
     switch (stage) {
         case core::EvolutionStage::Egg: return "EGG";
+        case core::EvolutionStage::Baby: return "BABY";
         case core::EvolutionStage::Child: return "CHILD";
         case core::EvolutionStage::Adult: return "ADULT";
+        case core::EvolutionStage::Final: return "FINAL";
         default: return "BABY";
     }
 }
@@ -279,6 +283,7 @@ const char* rejectionLabel(core::CareResult result) {
         case core::CareResult::RejectedNoEnergy: return "TIRED";
         case core::CareResult::RejectedAlreadySleeping: return "RESTING";
         case core::CareResult::RejectedAlreadyAwake: return "AWAKE";
+        case core::CareResult::RejectedEgg: return "EGG";
         default: return nullptr;
     }
 }

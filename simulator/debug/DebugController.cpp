@@ -40,12 +40,18 @@ void DebugController::forceEvolution() {
             state.ageMillis = 0;
             break;
         case core::EvolutionStage::Baby:
+            state.stage = core::EvolutionStage::Child;
             state.ageMillis = core::evolution::kChildAgeMs;
             break;
         case core::EvolutionStage::Child:
+            state.stage = core::EvolutionStage::Adult;
             state.ageMillis = core::evolution::kAdultAgeMs;
             break;
         case core::EvolutionStage::Adult:
+            state.stage = core::EvolutionStage::Final;
+            state.ageMillis = core::evolution::kFinalAgeMs;
+            break;
+        case core::EvolutionStage::Final:
             state.stage = core::EvolutionStage::Egg;
             state.ageMillis = 0;
             break;

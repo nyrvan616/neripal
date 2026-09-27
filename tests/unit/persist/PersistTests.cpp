@@ -39,6 +39,12 @@ using neripal::persist::SaveRecord;
 using neripal::persist::SaveSession;
 using neripal::persist::StorageStatus;
 
+void hatch(Pet& pet) {
+    auto state = pet.state();
+    state.stage = EvolutionStage::Baby;
+    pet.restore(state);
+}
+
 struct TestCase {
     std::string_view name;
     std::function<bool()> run;
@@ -210,6 +216,7 @@ bool petCaptureCodecRoundtrip() {
     FakeClock clock;
     FakeRandom rng;
     Pet pet(clock, rng);
+    hatch(pet);
     pet.sleep();
     SaveRecord record;
     record.sequence = 4;
@@ -233,6 +240,8 @@ struct SessionEnv {
     FakeSaveStorage store{};
     Pet pet{game, rng};
     SaveSession saves{pet, store, wall, session};
+
+    SessionEnv() { hatch(pet); }
 
     bool put(std::uint8_t slot, std::uint32_t sequence, std::int64_t unixSeconds,
              PetSnapshot snapshot = {}) {
@@ -300,6 +309,7 @@ bool sessionInvalidReadbackKeepsPreviousSlot() {
     SessionEnv env;
     PetSnapshot first;
     first.hunger = 12;
+    first.stage = EvolutionStage::Baby;
     if (!env.put(0, 1, 1000, first)) return false;
     env.wall.set(1000);
     if (env.saves.boot() != BootResult::Restored) return false;
@@ -336,6 +346,7 @@ bool sessionTrustedBootAppliesOfflineOnce() {
     SessionEnv env;
     PetSnapshot snap;
     snap.hunger = 10;
+    snap.stage = EvolutionStage::Baby;
     if (!env.put(0, 1, 1'000, snap)) return false;
     env.wall.set(1'000 + 120);
     if (env.saves.boot() != BootResult::Restored) return false;
@@ -500,6 +511,7 @@ bool fileSessionSaveLoadCycle() {
     wall.set(2'000);
     neripal::desktop::FileSaveStorage storage(dir);
     Pet pet(game, rng);
+    hatch(pet);
     SaveSession saves(pet, storage, wall, session);
     if (saves.boot() != BootResult::Fresh) return false;
     const int hungerBefore = pet.state().hunger;

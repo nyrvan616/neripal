@@ -169,7 +169,8 @@ bool everyScreenStaysInsideLogicalViewport() {
     for (const auto stage : {neripal::core::EvolutionStage::Egg,
                              neripal::core::EvolutionStage::Baby,
                              neripal::core::EvolutionStage::Child,
-                             neripal::core::EvolutionStage::Adult}) {
+                             neripal::core::EvolutionStage::Adult,
+                             neripal::core::EvolutionStage::Final}) {
         pet.stage = stage;
         if (!renderAndCheck()) return false;
     }
@@ -183,7 +184,8 @@ bool everyScreenStaysInsideLogicalViewport() {
     for (const auto stage : {neripal::core::EvolutionStage::Egg,
                              neripal::core::EvolutionStage::Baby,
                              neripal::core::EvolutionStage::Child,
-                             neripal::core::EvolutionStage::Adult}) {
+                             neripal::core::EvolutionStage::Adult,
+                             neripal::core::EvolutionStage::Final}) {
         pet.stage = stage;
         if (!renderAndCheck()) return false;
     }

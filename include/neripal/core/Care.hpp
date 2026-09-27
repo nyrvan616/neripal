@@ -18,6 +18,7 @@ enum class CareResult {
     RejectedNoEnergy,
     RejectedAlreadySleeping,
     RejectedAlreadyAwake,
+    RejectedEgg,
 };
 
 }  // namespace neripal::core

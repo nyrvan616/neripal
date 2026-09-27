@@ -18,7 +18,7 @@ struct PetState {
     int stimulation = balance::kStimulationStart;  // 0 = bored, 100 = stimulated
     std::uint64_t ageMillis = 0;
     bool sleeping = false;
-    EvolutionStage stage = EvolutionStage::Baby;
+    EvolutionStage stage = EvolutionStage::Egg;
 
     // Presentation snapshot of the current activity. Mood is not stored here.
     Activity activity = Activity::Idle;

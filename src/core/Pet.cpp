@@ -6,6 +6,7 @@
 #include "neripal/core/Needs.hpp"
 
 #include <algorithm>
+#include <limits>
 
 namespace neripal::core {
 
@@ -23,6 +24,7 @@ void Pet::anchorClock() {
 }
 
 CareResult Pet::applyStatAction(CareAction action) {
+    if (state_.stage == EvolutionStage::Egg) return CareResult::RejectedEgg;
     if (state_.sleeping) return CareResult::RejectedAsleep;
     const StatDelta delta = careEffect(action);
     if (delta.energy < 0 && state_.energy < -delta.energy) {
@@ -51,6 +53,7 @@ CareResult Pet::train() {
 }
 
 CareResult Pet::sleep() {
+    if (state_.stage == EvolutionStage::Egg) return CareResult::RejectedEgg;
     if (state_.sleeping) return CareResult::RejectedAlreadySleeping;
     state_.sleeping = true;
     autonomy_.enterSleep(state_, events_);
@@ -58,6 +61,7 @@ CareResult Pet::sleep() {
 }
 
 CareResult Pet::wake() {
+    if (state_.stage == EvolutionStage::Egg) return CareResult::RejectedEgg;
     if (!state_.sleeping) return CareResult::RejectedAlreadyAwake;
     state_.sleeping = false;
     autonomy_.enterIdle(state_, events_);
@@ -85,21 +89,100 @@ CareResult Pet::apply(CareAction action) {
 }
 
 void Pet::applyNeedsStep() {
+    if (state_.stage == EvolutionStage::Egg) return;
     neripal::core::applyNeedsStep(state_, needsStepPhase_);
     recordStageStep(care_, state_);
 }
 
-void Pet::updateEvolution() {
-    if (state_.stage == EvolutionStage::Egg) {
-        if (state_.ageMillis < evolution::kEggHatchAgeMs) return;
-        state_.stage = EvolutionStage::Baby;
+std::uint64_t Pet::millisUntilNextStage() const noexcept {
+    std::uint64_t gate = 0;
+    switch (state_.stage) {
+        case EvolutionStage::Egg: gate = evolution::kEggHatchAgeMs; break;
+        case EvolutionStage::Baby: gate = evolution::kChildAgeMs; break;
+        case EvolutionStage::Child: gate = evolution::kAdultAgeMs; break;
+        case EvolutionStage::Adult: gate = evolution::kFinalAgeMs; break;
+        case EvolutionStage::Final:
+            return std::numeric_limits<std::uint64_t>::max();
     }
-    if (state_.ageMillis >= evolution::kAdultAgeMs) {
-        state_.stage = EvolutionStage::Adult;
-    } else if (state_.ageMillis >= evolution::kChildAgeMs) {
-        state_.stage = EvolutionStage::Child;
-    } else {
-        state_.stage = EvolutionStage::Baby;
+    if (state_.ageMillis >= gate) return 0;
+    return gate - state_.ageMillis;
+}
+
+bool Pet::advanceOneStage() noexcept {
+    switch (state_.stage) {
+        case EvolutionStage::Egg:
+            state_.stage = EvolutionStage::Baby;
+            return true;
+        case EvolutionStage::Baby:
+            state_.stage = EvolutionStage::Child;
+            return false;
+        case EvolutionStage::Child:
+            state_.stage = EvolutionStage::Adult;
+            return false;
+        case EvolutionStage::Adult:
+            state_.stage = EvolutionStage::Final;
+            return false;
+        case EvolutionStage::Final:
+            return false;
+    }
+    return false;
+}
+
+void Pet::pushHatched() noexcept {
+    GameEvent event;
+    event.kind = GameEventKind::Hatched;
+    events_.push(event);
+}
+
+void Pet::applyTimeOnCurrentStage(std::uint64_t elapsed) {
+    if (elapsed == 0) return;
+    if (state_.stage == EvolutionStage::Egg) {
+        state_.ageMillis += elapsed;
+        return;
+    }
+
+    std::uint64_t remaining = elapsed;
+    while (remaining > 0) {
+        if (needsRemainderMs_ >= balance::kNeedsStepMs) {
+            needsRemainderMs_ %= balance::kNeedsStepMs;
+        }
+        const auto toNeeds = balance::kNeedsStepMs - needsRemainderMs_;
+        const auto chunk = remaining < toNeeds ? remaining : toNeeds;
+        state_.ageMillis += chunk;
+        needsRemainderMs_ += chunk;
+        remaining -= chunk;
+        if (needsRemainderMs_ >= balance::kNeedsStepMs) {
+            needsRemainderMs_ -= balance::kNeedsStepMs;
+            applyNeedsStep();
+            if (!state_.sleeping) {
+                tickCareEpisodes(care_, state_);
+            }
+        }
+    }
+}
+
+void Pet::consumeElapsed(std::uint64_t elapsed) {
+    if (elapsed == 0) return;
+    // A persisted age that is already past the next gate advances one stage.
+    // Further gates wait for time that actually crosses them, so a stale age
+    // cannot skip Baby or Child in the same call.
+    if (millisUntilNextStage() == 0) {
+        if (advanceOneStage()) pushHatched();
+    }
+
+    std::uint64_t remaining = elapsed;
+    while (remaining > 0) {
+        const auto toStage = millisUntilNextStage();
+        if (toStage == 0) {
+            applyTimeOnCurrentStage(remaining);
+            return;
+        }
+        const auto chunk = remaining < toStage ? remaining : toStage;
+        applyTimeOnCurrentStage(chunk);
+        remaining -= chunk;
+        if (millisUntilNextStage() == 0) {
+            if (advanceOneStage()) pushHatched();
+        }
     }
 }
 
@@ -113,22 +196,12 @@ void Pet::update() {
     const auto elapsed = now - lastUpdateMs_;
     lastUpdateMs_ = now;
     const bool startedAsEgg = state_.stage == EvolutionStage::Egg;
-    state_.ageMillis += elapsed;
-    updateEvolution();
-    needsRemainderMs_ += elapsed;
-
-    while (needsRemainderMs_ >= balance::kNeedsStepMs) {
-        needsRemainderMs_ -= balance::kNeedsStepMs;
-        applyNeedsStep();
-        if (!state_.sleeping) {
-            tickCareEpisodes(care_, state_);
-        }
-    }
+    consumeElapsed(elapsed);
 
     autonomy_.onStatsChanged(state_, events_);
     const bool frozen = startedAsEgg || autonomy_.frozenBySleep(state_);
     autonomy_.advance(state_, random_, events_, elapsed, frozen);
-    if (!state_.sleeping) {
+    if (state_.stage != EvolutionStage::Egg && !state_.sleeping) {
         ensureUrgentEpisodes(care_, state_);
     }
 }
@@ -156,7 +229,6 @@ void Pet::restore(const PetState& state) {
     state_.hygiene = clampStat(state_.hygiene);
     state_.affection = clampStat(state_.affection);
     state_.stimulation = clampStat(state_.stimulation);
-    updateEvolution();
     needsRemainderMs_ = 0;
     needsStepPhase_ = 0;
     care_.clearEpisodes();
@@ -202,7 +274,6 @@ void Pet::restoreSnapshot(const PetSnapshot& snapshot) {
     }
     state_.stage = snapshot.stage;
     care_ = snapshot.care;
-    updateEvolution();
     needsRemainderMs_ = snapshot.needsRemainderMs;
     if (needsRemainderMs_ >= balance::kNeedsStepMs) {
         needsRemainderMs_ %= balance::kNeedsStepMs;
@@ -221,7 +292,6 @@ void Pet::applyOffline(std::uint64_t ageElapsedMs, std::uint64_t needsElapsedMs)
     }
 
     state_.ageMillis += ageElapsedMs;
-    updateEvolution();
 
     const bool startedNap = autonomy_.sleepCause() == SleepCause::Nap;
     SleepCause cause = autonomy_.sleepCause();
@@ -241,7 +311,7 @@ void Pet::applyOffline(std::uint64_t ageElapsedMs, std::uint64_t needsElapsedMs)
     std::uint32_t stableSteps = 0;
     std::uint64_t cursor = 0;
 
-    while (cursor < needsElapsedMs) {
+    while (state_.stage != EvolutionStage::Egg && cursor < needsElapsedMs) {
         if (phaseStable && stableSteps >= balance::kNeedsSettleSteps) {
             break;
         }
@@ -285,7 +355,7 @@ void Pet::applyOffline(std::uint64_t ageElapsedMs, std::uint64_t needsElapsedMs)
         }
     }
 
-    if (cursor < needsElapsedMs) {
+    if (state_.stage != EvolutionStage::Egg && cursor < needsElapsedMs) {
         const std::uint64_t rest = needsElapsedMs - cursor;
         needsRemainderMs_ = (needsRemainderMs_ + rest) % balance::kNeedsStepMs;
     }

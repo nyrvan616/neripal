@@ -75,7 +75,9 @@ std::int16_t clampToI16(int value) noexcept {
 }
 
 bool knownStage(std::uint8_t raw) noexcept {
-    return raw <= static_cast<std::uint8_t>(core::EvolutionStage::Adult);
+    // V1 still stores one stage byte. Final is a valid value; the rest of the
+    // 0.6 record is left for save V2.
+    return raw <= static_cast<std::uint8_t>(core::EvolutionStage::Final);
 }
 
 bool knownSleepCause(std::uint8_t raw) noexcept {
