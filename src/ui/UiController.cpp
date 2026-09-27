@@ -5,7 +5,6 @@
 namespace neripal::ui {
 namespace {
 constexpr std::uint64_t kIdleFrameMillis = 500;
-constexpr std::uint64_t kMenuSelectionMillis = 120;
 }
 
 void UiController::openMenu() {

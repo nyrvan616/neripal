@@ -4,7 +4,7 @@ Fecha: 2026-09-26
 Directorio: `project/NeriPal/`  
 Objetivo: ciclo evolutivo real, con historial de crianza, evolución offline y aviso persistente.
 
-El rótulo en pantalla sigue siendo `0.4.0` (`include/neripal/Version.hpp`). Este cierre no lo cambia.
+Este cierre dejó el rótulo en `0.4.0`. 0.6.1 lo pasa a `0.6.1` en `include/neripal/Version.hpp` y en `project(NeriPal VERSION 0.6.1)`. La pantalla muestra `NERIPAL 0.6.1` y el serial `NeriPal 0.6.1`.
 
 ## Objetivo
 

@@ -6,6 +6,7 @@
 #include "neripal/core/PetState.hpp"
 #include "neripal/persist/SaveSession.hpp"
 #include "neripal/platform/IRenderer.hpp"
+#include "neripal/platform/Rgb565.hpp"
 #include "neripal/ui/NeedSignals.hpp"
 #include "neripal/ui/PetView.hpp"
 #include "neripal/ui/UiController.hpp"
@@ -36,6 +37,12 @@ struct TestCase { std::string_view name; std::function<bool()> run; };
 class FakeRenderer final : public neripal::platform::IRenderer {
 public:
     struct Rect { int x; int y; int width; int height; };
+    struct TextCommand {
+        int x = 0;
+        int y = 0;
+        int scale = 1;
+        std::string text;
+    };
 
     void beginFrame(Color) override { beganFrame = true; }
     void fillRect(int x, int y, int width, int height, Color) override {
@@ -44,21 +51,41 @@ public:
     void drawRect(int x, int y, int width, int height, Color) override {
         rectangles.push_back({x, y, width, height});
     }
-    void drawText(int, int, std::string_view text, Color, int) override {
-        texts.emplace_back(text);
+    void drawText(int x, int y, std::string_view text, Color, int scale) override {
+        texts.push_back(TextCommand{x, y, scale, std::string(text)});
     }
     void endFrame() override { endedFrame = true; }
 
     bool beganFrame = false;
     bool endedFrame = false;
     std::vector<Rect> rectangles;
-    std::vector<std::string> texts;
+    std::vector<TextCommand> texts;
 };
 
 bool hasText(const FakeRenderer& renderer, std::string_view text) {
     for (const auto& item : renderer.texts) {
-        if (item == text) return true;
+        if (item.text == text) return true;
     }
+    return false;
+}
+
+int effectiveTextScale(int scale) {
+    return scale < 1 ? 1 : scale;
+}
+
+bool textCommandFits(const FakeRenderer::TextCommand& command, std::string& detail) {
+    const int scale = effectiveTextScale(command.scale);
+    const int right = command.x + FakeRenderer::kTextCellWidth * scale *
+                      static_cast<int>(command.text.size());
+    const int bottom = command.y + FakeRenderer::kTextCellHeight * scale;
+    if (command.x >= 0 && command.y >= 0 && right <= FakeRenderer::kLogicalWidth &&
+        bottom <= FakeRenderer::kLogicalHeight) {
+        return true;
+    }
+    detail = "text=\"" + command.text + "\" x=" + std::to_string(command.x) +
+             " y=" + std::to_string(command.y) + " scale=" + std::to_string(command.scale) +
+             " effectiveScale=" + std::to_string(scale) + " right=" + std::to_string(right) +
+             " bottom=" + std::to_string(bottom);
     return false;
 }
 
@@ -161,6 +188,125 @@ bool statusDoesNotEnqueueCareAction() {
     return !ui.takeCareAction().has_value();
 }
 
+bool menuSelectionEasesOutOver240ms() {
+    PetState pet;
+    neripal::ui::UiController ui;
+    if (neripal::ui::UiController::kMenuSelectionMillis != 240) return false;
+    ui.update(0);
+    ui.handleInput(InputAction::Confirm, pet);
+    ui.handleInput(InputAction::Next, pet);
+    if (ui.state().menuIndex != 1 || ui.state().previousMenuIndex != 0) return false;
+    if (ui.state().menuSelectionProgress != 0.0F) return false;
+
+    const auto half = neripal::ui::UiController::kMenuSelectionMillis / 2;
+    ui.update(half);
+    if (ui.state().menuSelectionProgress != 0.5F) return false;
+    if (ui.state().previousMenuIndex == ui.state().menuIndex) return false;
+
+    neripal::ui::PetView view;
+    FakeRenderer renderer;
+    view.render(renderer, pet, ui.state());
+    int highlightX = -1;
+    int highlightY = -1;
+    int highlights = 0;
+    for (const auto& rect : renderer.rectangles) {
+        if (rect.width != 48 || rect.height != 36) continue;
+        highlightX = rect.x;
+        highlightY = rect.y;
+        ++highlights;
+    }
+    // Tile 0 is (20, 76) and tile 1 is (72, 76). The 48x42 panel is drawn at
+    // origin - 2, and its full-width stroke sits 3 px lower. Linear t=0.5
+    // would place that stroke at x=44; the destination stroke is at x=70.
+    if (highlights != 1 || highlightY != 77) return false;
+    if (highlightX <= 44 || highlightX >= 70) return false;
+
+    ui.update(neripal::ui::UiController::kMenuSelectionMillis - 1);
+    if (!(ui.state().menuSelectionProgress < 1.0F)) return false;
+    if (ui.state().previousMenuIndex == ui.state().menuIndex) return false;
+
+    ui.update(neripal::ui::UiController::kMenuSelectionMillis);
+    return ui.state().menuSelectionProgress == 1.0F &&
+           ui.state().previousMenuIndex == ui.state().menuIndex;
+}
+
+int footerPills(const FakeRenderer& renderer) {
+    int count = 0;
+    for (const auto& rect : renderer.rectangles) {
+        if (rect.width == 28 && rect.height == 16 && rect.y >= 207) ++count;
+    }
+    return count;
+}
+
+int textX(const FakeRenderer& renderer, std::string_view text) {
+    for (const auto& item : renderer.texts) {
+        if (item.text == text && item.y == 218) return item.x;
+    }
+    return -1;
+}
+
+bool footerShowsOnlyAcceptedActions() {
+    PetState pet;
+    neripal::ui::PetView view;
+    neripal::ui::UiController ui;
+    FakeRenderer renderer;
+
+    const auto show = [&] {
+        renderer = FakeRenderer{};
+        view.render(renderer, pet, ui.state());
+    };
+    const auto absent = [&](std::string_view text) { return !hasText(renderer, text); };
+
+    show();
+    if (!hasText(renderer, "B") || !hasText(renderer, "Menu")) return false;
+    if (footerPills(renderer) != 1) return false;
+    if (textX(renderer, "Menu") <= textX(renderer, "B")) return false;
+    if (!absent("*") || !absent("+") || !absent("i") || !absent(">") || !absent("MENU")) return false;
+    if (!absent("A") || !absent("C") || !absent("Next") || !absent("OK") || !absent("Back")) {
+        return false;
+    }
+    if (!absent("SELECT AN ICON") || !absent("A NEXT") || !absent("C  BACK")) return false;
+
+    ui.handleInput(InputAction::Confirm, pet);
+    show();
+    if (!hasText(renderer, "A") || !hasText(renderer, "Next") || !hasText(renderer, "B") ||
+        !hasText(renderer, "OK") || !hasText(renderer, "C") || !hasText(renderer, "Back")) {
+        return false;
+    }
+    if (footerPills(renderer) != 3) return false;
+    if (textX(renderer, "Next") <= textX(renderer, "A")) return false;
+    if (textX(renderer, "OK") <= textX(renderer, "B")) return false;
+    if (textX(renderer, "Back") <= textX(renderer, "C")) return false;
+    if (!absent("SELECT AN ICON") || !absent("Menu") || !absent("*")) return false;
+
+    neripal::ui::UiController status;
+    openMenuAt(status, pet, neripal::ui::UiController::kMenuStatus);
+    status.handleInput(InputAction::Confirm, pet);
+    if (status.state().screen != neripal::ui::Screen::Status) return false;
+    renderer = FakeRenderer{};
+    view.render(renderer, pet, status.state());
+    if (!hasText(renderer, "B") || !hasText(renderer, "Menu") || !hasText(renderer, "C") ||
+        !hasText(renderer, "Back")) {
+        return false;
+    }
+    if (footerPills(renderer) != 2) return false;
+    if (!absent("A") || !absent("Next") || !absent("OK") || !absent("C  BACK")) return false;
+
+    neripal::ui::UiController notice;
+    notice.presentEvolutionNotice(
+        {neripal::core::EvolutionStage::Egg, neripal::core::EvolutionStage::Baby,
+         neripal::core::FormId::Juvenile});
+    renderer = FakeRenderer{};
+    view.render(renderer, pet, notice.state());
+    if (!hasText(renderer, "B") || !hasText(renderer, "OK") || !hasText(renderer, "EVOLVED")) {
+        return false;
+    }
+    if (footerPills(renderer) != 1) return false;
+    if (textX(renderer, "OK") <= textX(renderer, "B")) return false;
+    return absent("Menu") && absent("A") && absent("C") && absent("Next") && absent("Back") &&
+           absent("B CONFIRM");
+}
+
 bool idleAnimationUsesControlledTime() {
     neripal::ui::UiController ui;
     ui.update(0);
@@ -180,7 +326,7 @@ bool statusShowsHygieneBar() {
     ui.handleInput(InputAction::Confirm, pet);
     view.render(renderer, pet, ui.state());
     for (const auto& text : renderer.texts) {
-        if (text == "HYG") return true;
+        if (text.text == "HYG") return true;
     }
     return false;
 }
@@ -238,9 +384,9 @@ bool deviceViewsContainNoDebugLabels() {
     FakeRenderer renderer;
     view.render(renderer, pet, ui.state());
     for (const auto& text : renderer.texts) {
-        if (text.find("TIME X") != std::string::npos ||
-            text.find("F FEED") != std::string::npos ||
-            text.find("UP/DOWN") != std::string::npos) {
+        if (text.text.find("TIME X") != std::string::npos ||
+            text.text.find("F FEED") != std::string::npos ||
+            text.text.find("UP/DOWN") != std::string::npos) {
             return false;
         }
     }
@@ -267,7 +413,7 @@ bool rejectedFeedbackUsesCareResultLabel() {
     view.render(renderer, pet, ui.state());
     bool sawTired = false;
     for (const auto& text : renderer.texts) {
-        if (text == "TIRED") sawTired = true;
+        if (text.text == "TIRED") sawTired = true;
     }
     if (!sawTired) return false;
 
@@ -275,7 +421,7 @@ bool rejectedFeedbackUsesCareResultLabel() {
     ui.beginCareFeedback(CareAction::Feed, CareResult::RejectedAsleep, 0);
     view.render(renderer, pet, ui.state());
     for (const auto& text : renderer.texts) {
-        if (text == "ASLEEP") return true;
+        if (text.text == "ASLEEP") return true;
     }
     return false;
 }
@@ -298,7 +444,7 @@ bool homeBannerUsesDerivedMood() {
         renderer = FakeRenderer{};
         view.render(renderer, pet, ui.state());
         for (const auto& text : renderer.texts) {
-            if (text == label) return true;
+            if (text.text == label) return true;
         }
         return false;
     };
@@ -337,8 +483,8 @@ bool eggBannerIsWaitingRegardlessOfMood() {
     view.render(renderer, pet, ui.state());
     bool sawWaiting = false;
     for (const auto& text : renderer.texts) {
-        if (text == "WAITING") sawWaiting = true;
-        if (text == "DIRTY" || text == "TIRED" || text == "ANNOYED") return false;
+        if (text.text == "WAITING") sawWaiting = true;
+        if (text.text == "DIRTY" || text.text == "TIRED" || text.text == "ANNOYED") return false;
     }
     return sawWaiting;
 }
@@ -778,6 +924,208 @@ bool debugForceEvolutionKeepsStageAndFormCoherent() {
     }
     return affectionUrgent && rng.remaining() == 0;
 }
+
+bool textsFit(const FakeRenderer& renderer, std::string_view scene) {
+    for (const auto& command : renderer.texts) {
+        std::string detail;
+        if (textCommandFits(command, detail)) continue;
+        std::cerr << "textFitsViewport " << scene << " " << detail << '\n';
+        return false;
+    }
+    return true;
+}
+
+bool renderTextsFit(neripal::ui::PetView& view, const PetState& pet,
+                    const neripal::ui::UiState& uiState, std::string_view scene) {
+    FakeRenderer renderer;
+    view.render(renderer, pet, uiState);
+    return textsFit(renderer, scene);
+}
+
+bool textFitsViewport() {
+    FakeRenderer::TextCommand collapsed{230, 0, 0, "AB"};
+    std::string collapsedDetail;
+    if (textCommandFits(collapsed, collapsedDetail)) {
+        std::cerr << "textFitsViewport scale<1 was not treated as 1\n";
+        return false;
+    }
+
+    using neripal::core::EvolutionStage;
+    using neripal::core::FormId;
+    using neripal::core::balance::kHungerAttention;
+    using neripal::core::balance::kHungerUrgent;
+    using neripal::core::balance::kLowNeedAttention;
+    using neripal::core::balance::kLowNeedUrgent;
+    neripal::ui::PetView view;
+
+    const auto formForStage = [](EvolutionStage stage) {
+        switch (stage) {
+            case EvolutionStage::Egg: return FormId::None;
+            case EvolutionStage::Baby:
+            case EvolutionStage::Child: return FormId::Juvenile;
+            case EvolutionStage::Adult:
+            case EvolutionStage::Final: return FormId::AdultC;
+        }
+        return FormId::None;
+    };
+    const EvolutionStage stages[] = {
+        EvolutionStage::Egg, EvolutionStage::Baby, EvolutionStage::Child,
+        EvolutionStage::Adult, EvolutionStage::Final};
+    const int needLevels[] = {0, 1, 2};
+
+    for (const EvolutionStage stage : stages) {
+        for (const int level : needLevels) {
+            for (const bool sleeping : {false, true}) {
+                PetState pet;
+                pet.stage = stage;
+                pet.form = formForStage(stage);
+                pet.sleeping = sleeping;
+                if (level == 0) {
+                    pet.hunger = 35;
+                    pet.energy = 80;
+                    pet.hygiene = 80;
+                    pet.affection = 70;
+                    pet.stimulation = 70;
+                } else if (level == 1) {
+                    pet.hunger = kHungerAttention;
+                    pet.energy = kLowNeedAttention;
+                    pet.hygiene = kLowNeedAttention;
+                    pet.affection = kLowNeedAttention;
+                    pet.stimulation = kLowNeedAttention;
+                } else {
+                    pet.hunger = kHungerUrgent;
+                    pet.energy = kLowNeedUrgent;
+                    pet.hygiene = kLowNeedUrgent;
+                    pet.affection = kLowNeedUrgent;
+                    pet.stimulation = kLowNeedUrgent;
+                }
+                neripal::ui::UiController ui;
+                const char* need = level == 0 ? "normal" : level == 1 ? "attention" : "urgent";
+                const std::string scene = std::string("home stage=") + std::to_string(static_cast<int>(stage)) +
+                                          " " + need + (sleeping ? " asleep" : " awake");
+                if (!renderTextsFit(view, pet, ui.state(), scene)) return false;
+            }
+        }
+    }
+
+    PetState edge;
+    edge.stage = EvolutionStage::Baby;
+    edge.form = FormId::Juvenile;
+    edge.sleeping = true;
+    edge.x = 0;
+    neripal::ui::UiController home;
+    if (!renderTextsFit(view, edge, home.state(), "home asleep x=0")) return false;
+    edge.x = FakeRenderer::kLogicalWidth;
+    if (!renderTextsFit(view, edge, home.state(), "home asleep x=240")) return false;
+
+    PetState menuPet;
+    menuPet.stage = EvolutionStage::Baby;
+    menuPet.form = FormId::Juvenile;
+    neripal::ui::UiController menu;
+    openMenuAt(menu, menuPet, 0);
+    for (int index = 0; index < neripal::ui::UiController::kMenuItemCount; ++index) {
+        if (menu.state().menuIndex != index) return false;
+        for (const bool sleeping : {false, true}) {
+            menuPet.sleeping = sleeping;
+            const std::string scene = std::string("menu index=") + std::to_string(index) +
+                                      (sleeping ? " asleep" : " awake");
+            if (!renderTextsFit(view, menuPet, menu.state(), scene)) return false;
+        }
+        menu.handleInput(InputAction::Next, menuPet);
+    }
+
+    const std::pair<EvolutionStage, FormId> statusForms[] = {
+        {EvolutionStage::Egg, FormId::None},
+        {EvolutionStage::Baby, FormId::Juvenile},
+        {EvolutionStage::Child, FormId::Juvenile},
+        {EvolutionStage::Adult, FormId::AdultA},
+        {EvolutionStage::Adult, FormId::AdultB},
+        {EvolutionStage::Adult, FormId::AdultC},
+        {EvolutionStage::Adult, FormId::AdultSecret},
+        {EvolutionStage::Final, FormId::AdultA},
+        {EvolutionStage::Final, FormId::AdultB},
+        {EvolutionStage::Final, FormId::AdultC},
+        {EvolutionStage::Final, FormId::AdultSecret},
+    };
+    for (const auto& [stage, form] : statusForms) {
+        for (const bool sleeping : {false, true}) {
+            PetState pet;
+            pet.stage = stage;
+            pet.form = form;
+            pet.sleeping = sleeping;
+            pet.hunger = 100;
+            pet.energy = 0;
+            pet.hygiene = 50;
+            pet.affection = 100;
+            pet.stimulation = 0;
+            pet.happiness = 100;
+            pet.health = 0;
+            pet.ageMillis = 72ULL * 60 * 60 * 1000;
+            neripal::ui::UiController ui;
+            openMenuAt(ui, pet, neripal::ui::UiController::kMenuStatus);
+            ui.handleInput(InputAction::Confirm, pet);
+            if (ui.state().screen != neripal::ui::Screen::Status) return false;
+            const std::string scene = std::string("status stage=") + std::to_string(static_cast<int>(stage)) +
+                                      " form=" + std::to_string(static_cast<int>(form)) +
+                                      (sleeping ? " asleep" : " awake");
+            if (!renderTextsFit(view, pet, ui.state(), scene)) return false;
+        }
+    }
+
+    const neripal::core::EvolutionNotice notices[] = {
+        {EvolutionStage::Egg, EvolutionStage::Baby, FormId::Juvenile},
+        {EvolutionStage::Baby, EvolutionStage::Child, FormId::Juvenile},
+        {EvolutionStage::Child, EvolutionStage::Adult, FormId::AdultA},
+        {EvolutionStage::Child, EvolutionStage::Adult, FormId::AdultB},
+        {EvolutionStage::Child, EvolutionStage::Adult, FormId::AdultC},
+        {EvolutionStage::Child, EvolutionStage::Adult, FormId::AdultSecret},
+        {EvolutionStage::Adult, EvolutionStage::Final, FormId::AdultA},
+        {EvolutionStage::Adult, EvolutionStage::Final, FormId::AdultB},
+        {EvolutionStage::Adult, EvolutionStage::Final, FormId::AdultC},
+        {EvolutionStage::Adult, EvolutionStage::Final, FormId::AdultSecret},
+    };
+    PetState noticePet;
+    noticePet.stage = EvolutionStage::Child;
+    noticePet.form = FormId::Juvenile;
+    for (const auto& notice : notices) {
+        neripal::ui::UiController ui;
+        ui.presentEvolutionNotice(notice);
+        if (!ui.showingEvolutionNotice()) return false;
+        const std::string scene = std::string("notice ") + std::to_string(static_cast<int>(notice.from)) +
+                                  ">" + std::to_string(static_cast<int>(notice.to)) +
+                                  " form=" + std::to_string(static_cast<int>(notice.form));
+        if (!renderTextsFit(view, noticePet, ui.state(), scene)) return false;
+    }
+    return true;
+}
+
+bool rgb565Conversion() {
+    using neripal::platform::toRgb565;
+    const std::pair<Color, std::uint16_t> cases[] = {
+        {0x00000000u, 0x0000u},
+        {0x00FFFFFFu, 0xFFFFu},
+        {0x00FF0000u, 0xF800u},
+        {0x0000FF00u, 0x07E0u},
+        {0x000000FFu, 0x001Fu},
+        {0x001A2440u, 0x1928u},
+        {0x002F3857u, 0x29CAu},
+        {0x0086C9D1u, 0x865Au},
+        {0x00D95850u, 0xDACAu},
+        {0x00F6C75Du, 0xF62Bu},
+        {0x005B79BCu, 0x5BD7u},
+        {0x00FFF0C9u, 0xFF99u},
+    };
+    for (const auto& [color, expected] : cases) {
+        const std::uint16_t actual = toRgb565(color);
+        if (actual == expected) continue;
+        std::cerr << std::hex << "toRgb565(0x" << color << ")=0x" << actual << " expected 0x"
+                  << expected << std::dec << '\n';
+        return false;
+    }
+    if (toRgb565(0x00FF0000u) == toRgb565(0x000000FFu)) return false;
+    if (toRgb565(0x0000FF00u) == 0x03E0u) return false;
+    return true;
+}
 }
 
 int main() {
@@ -791,6 +1139,8 @@ int main() {
         {"sleep menu selects wake when sleeping", sleepMenuSelectsWakeWhenSleeping},
         {"sleep menu selects sleep when awake", sleepMenuSelectsSleepWhenAwake},
         {"status does not enqueue care action", statusDoesNotEnqueueCareAction},
+        {"menu selection eases out over 240 ms", menuSelectionEasesOutOver240ms},
+        {"footer shows only accepted actions", footerShowsOnlyAcceptedActions},
         {"idle animation uses controlled time", idleAnimationUsesControlledTime},
         {"status shows hygiene bar", statusShowsHygieneBar},
         {"every screen stays inside logical viewport", everyScreenStaysInsideLogicalViewport},
@@ -811,6 +1161,8 @@ int main() {
         {"confirming notice does not change stage or form", confirmingNoticeDoesNotChangeStageOrForm},
         {"final uses the adult placeholder", finalUsesTheAdultPlaceholder},
         {"debug force evolution keeps stage and form coherent", debugForceEvolutionKeepsStageAndFormCoherent},
+        {"text fits viewport", textFitsViewport},
+        {"rgb565 conversion", rgb565Conversion},
     };
 
     int failures = 0;

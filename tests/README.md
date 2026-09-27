@@ -25,7 +25,7 @@ Para ver cada caso:
 
 ## Cobertura funcional actual
 
-CTest ejecuta tres binarios. El recuento del cierre 0.6 (158 + 29 + 46) está en
+CTest ejecuta tres binarios. El rótulo vigente es 0.6.1. El recuento del cierre 0.6 (158 + 29 + 46) está en
 `docs/MILESTONE_0.6.md`.
 
 - Feed, train, sleep, wake, clean, pet y play con `CareResult` motivado.

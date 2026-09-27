@@ -365,6 +365,58 @@ bool sessionTrustedBootAppliesOfflineOnce() {
            pet2.capture().hunger == afterFirst.hunger && second.savedUnixSeconds() == 1'120;
 }
 
+bool sessionAccountedCatchUpDoesNotReplayLiveTime() {
+    SessionEnv env;
+    PetSnapshot snap;
+    snap.hunger = 10;
+    snap.energy = 80;
+    snap.stage = EvolutionStage::Baby;
+    snap.form = neripal::core::FormId::Juvenile;
+    if (!env.put(0, 1, 1'000, snap)) return false;
+    env.wall.set(1'000);
+    if (env.saves.boot() != BootResult::Restored) return false;
+    if (env.pet.capture().ageMillis != 0 || env.saves.savedUnixSeconds() != 1'000) return false;
+
+    env.game.advance(30'000);
+    env.pet.update();
+    const auto lived = env.pet.capture();
+    if (lived.ageMillis != 30'000 || lived.hunger != 10) return false;
+
+    env.wall.set(1'030);
+    env.saves.accountWallClockNow();
+    if (env.saves.savedUnixSeconds() != 1'030) return false;
+    if (env.saves.catchUpAccountedWallClock()) return false;
+    if (env.pet.capture().ageMillis != 30'000 || env.pet.capture().hunger != 10) return false;
+
+    env.wall.set(1'150);
+    if (!env.saves.catchUpAccountedWallClock()) return false;
+    const auto locked = env.pet.capture();
+    if (locked.ageMillis != 150'000 || locked.hunger != 12) return false;
+    if (locked.sleepCause != SleepCause::None) return false;
+    if (env.saves.savedUnixSeconds() != 1'150) return false;
+
+    FakeClock game2;
+    FakeClock session2;
+    XorShift32 rng2{2u};
+    Pet pet2(game2, rng2);
+    SaveSession second(pet2, env.store, env.wall, session2);
+    if (second.boot() != BootResult::Restored) return false;
+    const auto again = pet2.capture();
+    return again.ageMillis == locked.ageMillis && again.hunger == locked.hunger &&
+           second.savedUnixSeconds() == 1'150;
+}
+
+bool sessionUntrustedAccountDoesNotCatchUp() {
+    SessionEnv env;
+    env.wall.set(1'000);
+    if (env.saves.boot() != BootResult::Fresh) return false;
+    const auto age = env.pet.capture().ageMillis;
+    env.wall.clear();
+    env.saves.accountWallClockNow();
+    if (env.saves.catchUpAccountedWallClock()) return false;
+    return env.pet.capture().ageMillis == age && env.saves.savedUnixSeconds() == 1'000;
+}
+
 bool sessionBootWithoutWallAbandonsAnchor() {
     SessionEnv env;
     PetSnapshot snap;
@@ -895,6 +947,9 @@ int main() {
         {"session invalid readback keeps previous slot", sessionInvalidReadbackKeepsPreviousSlot},
         {"session both invalid stay fresh without erase", sessionBothInvalidStayFreshWithoutErase},
         {"session trusted boot applies offline once", sessionTrustedBootAppliesOfflineOnce},
+        {"session accounted catch-up does not replay live time",
+         sessionAccountedCatchUpDoesNotReplayLiveTime},
+        {"session untrusted account does not catch up", sessionUntrustedAccountDoesNotCatchUp},
         {"session boot without wall abandons anchor", sessionBootWithoutWallAbandonsAnchor},
         {"session backwards wall does not rewind", sessionBackwardsWallDoesNotRewind},
         {"session wall appears mid session does not duplicate runtime",

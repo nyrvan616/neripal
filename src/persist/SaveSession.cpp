@@ -119,6 +119,23 @@ void SaveSession::adoptWallClockIfNeeded() {
     dirty_ = true;
 }
 
+void SaveSession::accountWallClockNow() {
+    const auto wall = wallClock_.nowUnixSeconds();
+    if (!wall.has_value()) {
+        return;
+    }
+    savedUnixSeconds_ = *wall;
+}
+
+bool SaveSession::catchUpAccountedWallClock() {
+    const auto wall = wallClock_.nowUnixSeconds();
+    if (!wall.has_value() || savedUnixSeconds_ <= 0 || *wall <= savedUnixSeconds_) {
+        return false;
+    }
+    applyOfflinePolicy(savedUnixSeconds_);
+    return true;
+}
+
 void SaveSession::applyOfflinePolicy(std::int64_t loadedUnix) {
     const auto wall = wallClock_.nowUnixSeconds();
     if (!wall.has_value()) {
