@@ -25,6 +25,17 @@ public:
                 core::IClock& sessionClock);
 
     BootResult boot();
+
+    // Marks the in-memory pet as already simulated through the current trusted
+    // wall-clock second. No flash write. No-op when the wall clock is untrusted.
+    void accountWallClockNow();
+
+    // Reuses applyOfflinePolicy for the gap since accountWallClockNow().
+    // True only when that policy applied a positive gap and anchored the pet.
+    // False does not apply time; the caller may pass a measured interval to
+    // Pet::applyOffline.
+    bool catchUpAccountedWallClock();
+
     void noteCareResult(core::CareResult result);
     void markDirty();
     void tick();

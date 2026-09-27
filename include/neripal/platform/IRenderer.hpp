@@ -12,6 +12,11 @@ public:
     static constexpr int kLogicalWidth = 240;
     static constexpr int kLogicalHeight = 240;
 
+    // (x, y) is the top-left of the first cell. Each character advances
+    // kTextCellWidth * scale. Line height is kTextCellHeight * scale.
+    static constexpr int kTextCellWidth = 6;
+    static constexpr int kTextCellHeight = 8;
+
     virtual ~IRenderer() = default;
     virtual void beginFrame(Color color) = 0;
     virtual void fillRect(int x, int y, int width, int height, Color color) = 0;

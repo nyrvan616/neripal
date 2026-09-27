@@ -46,6 +46,7 @@ public:
     static constexpr int kMenuStatus = 6;
     static constexpr int kMenuHome = 7;
     static constexpr int kMenuItemCount = 8;
+    static constexpr std::uint64_t kMenuSelectionMillis = 240;
     static constexpr std::uint64_t kCareFeedbackMillis = 900;
 
     const UiState& state() const noexcept { return state_; }

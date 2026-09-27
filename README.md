@@ -5,9 +5,9 @@ ESP32-S3-Touch-LCD-1.54. El proyecto comparte un Game Core C++17 entre el
 simulador y el firmware, con presentación 240x240, tiempo inyectable y tests
 deterministas.
 
-El cierre vigente es la milestone 0.6 (ciclo evolutivo). El rótulo que imprime
-el programa sigue siendo `0.4.0`: `include/neripal/Version.hpp` y
-`project(NeriPal VERSION 0.4.0)` no se cambiaron en ese cierre.
+El rótulo vigente es 0.6.1: `include/neripal/Version.hpp` y
+`project(NeriPal VERSION 0.6.1)`. La pantalla muestra `NERIPAL 0.6.1` y el
+serial `NeriPal 0.6.1`. El cierre de juego sigue en la milestone 0.6.
 
 NeriPal está preparado como un repositorio independiente. No necesita el
 directorio que lo contiene ni repositorios hermanos. En esta documentación,
@@ -26,8 +26,8 @@ directorio que lo contiene ni repositorios hermanos. En esta documentación,
 | HAL Waveshare | Base parcial | Reloj, power-hold, backlight, tres botones y NVS |
 | Display/touch/audio/IMU | Pendiente | `IRenderer` completo sigue vacío, `drawText` incluido |
 
-0.6 está verificada en host, tests y build de firmware. No está lista para una
-demo visual en la placa: el renderer no dibuja en el LCD.
+0.6.1 es el rótulo del simulador y del firmware. Está verificada en host, tests
+y build de firmware.
 
 El cierre de 0.6 está en [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md). Los de
 0.4 y 0.3, y el diagnóstico de 0.1, quedan como historia en `docs/`.
@@ -154,7 +154,7 @@ simulator/debug/           herramientas exclusivas de desarrollo
 tests/unit/core/           tests de juego
 tests/unit/ui/             tests de presentación
 tests/unit/persist/        tests de save
-assets/placeholders/       reserva para arte original; 0.6 sigue en rectángulos
+assets/placeholders/       reserva para arte original; 0.6.1 sigue en rectángulos
 docs/                      arquitectura, desarrollo, hardware y cierres
 ```
 
@@ -164,7 +164,7 @@ docs/                      arquitectura, desarrollo, hardware y cierres
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): capas y dependencias.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): compilación, ejecución, tests y debug.
 - [`docs/HARDWARE.md`](docs/HARDWARE.md): configuración, pinout y estado de la HAL.
-- [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md): cierre vigente del ciclo evolutivo.
+- [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md): cierre del ciclo evolutivo. El rótulo vigente es 0.6.1.
 - [`docs/MILESTONE_0.4.md`](docs/MILESTONE_0.4.md) y [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md): cierres históricos.
 - [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md): diagnóstico histórico de la 0.1.
 - [`tests/README.md`](tests/README.md): alcance de pruebas.
@@ -173,6 +173,5 @@ docs/                      arquitectura, desarrollo, hardware y cierres
 ## Próximo trabajo
 
 El ciclo de 0.7 (enfermedad, envejecimiento, muerte y reglas definitivas) no está
-empezado. Antes de una demo en placa hace falta un `IRenderer` real sobre ST7789
-y una pasada física de la UI de 0.6. El detalle de lo pendiente está en
+empezado. El rótulo vigente es 0.6.1. El detalle del cierre de juego está en
 [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md).
