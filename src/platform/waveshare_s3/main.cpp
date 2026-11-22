@@ -160,6 +160,9 @@ void loop() {
             pet.applyOffline(sleptMs, sleptMs);
         }
     }
+    if (ui.takeHatch()) {
+        pet.hatch();
+    }
     if (ui.takeEvolutionConfirm()) {
         pet.confirmEvolutionNotice();
     }
@@ -179,6 +182,10 @@ void loop() {
     }
     urgentSoundCue = neripal::ui::urgentSoundRequested(pet.state());
     (void)urgentSoundCue;
+    if (ui.takeResetConfirm()) {
+        pet.reset();
+        saves.saveNow();
+    }
     pet.update();
     ui.update(gameClock.nowMillis());
     saves.tick();

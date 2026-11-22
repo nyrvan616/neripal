@@ -4,7 +4,7 @@ Fecha: 2026-09-26
 Directorio: `project/NeriPal/`  
 Objetivo: ciclo evolutivo real, con historial de crianza, evolución offline y aviso persistente.
 
-Este cierre dejó el rótulo en `0.4.0`. 0.6.1 lo pasa a `0.6.1` en `include/neripal/Version.hpp` y en `project(NeriPal VERSION 0.6.1)`. La pantalla muestra `NERIPAL 0.6.1` y el serial `NeriPal 0.6.1`.
+Este cierre dejó el rótulo en `0.4.0`. 0.6.1 lo pasó a `0.6.1`. El rótulo vigente es 0.6.2 en `include/neripal/Version.hpp` y en `project(NeriPal VERSION 0.6.2)`. La pantalla muestra `NERIPAL 0.6.2` y el serial `NeriPal 0.6.2`. 0.6.2 recupera la salud fuera del piso y abre el huevo al confirmar en Home, con la edad en 0.
 
 ## Objetivo
 
@@ -83,7 +83,7 @@ Cargar no vuelve a evaluar `EvolutionRules` ni consume el RNG de evolución. Un 
 - Si la regla ganadora tiene dos salidas, el RNG se consume una vez en ese cruce y la forma queda en el snapshot. Encender, restaurar o cargar no vuelve a tirar.
 - Cada cruce empuja un `EvolutionNotice`. La cola sobrevive al restore del save. El anillo de `GameEvent` no: se vacía al restaurar. Confirmar el aviso solo lo saca de la cola.
 
-El minuto en el que se aterriza permanece en la etapa anterior. Una edad que ya superaba la compuerta avanza una sola etapa y no encadena el resto de compuertas ya vencidas. Un hueco largo desde edad 0 sí cruza cada compuerta que el tiempo agregado alcanza.
+El minuto en el que se aterriza permanece en la etapa anterior. Una edad que ya superaba la compuerta avanza una sola etapa y no encadena el resto de compuertas ya vencidas. Un huevo no se abre por un hueco de tiempo. Después de `hatch()`, con la edad en 0, un hueco largo cruza cada compuerta que el tiempo agregado alcanza.
 
 ## Balance provisional
 
@@ -94,9 +94,9 @@ Estos números viven en `Balance.hpp` y en la tabla fixture de `EvolutionRules.c
 - Ventana de atención: 15 minutos despiertos. El minuto que abre la ventana no consume un paso. Dormir la pausa. Solo Urgent abre la ventana. Attention no es un mistake y no arranca el reloj.
 - Efectos de acción: Feed, Train, Clean, Pet y Play tienen deltas provisionales en `careEffect`. Sleep y Wake no cambian stats por el delta.
 - Entrenamiento: solo Train cuenta. Bajo es menos de 6, moderado desde 6, frecuente desde 18, contado en la etapa.
-- Duraciones de etapa: huevo 1 h, Child a las 6 h, Adult a las 24 h, Final a las 72 h.
+- El huevo espera el primer Confirmar en Home. `Pet::hatch()` lo pasa a bebé y pone la edad en 0. Desde ahí el bebé dura 6 h, Child queda a las 6 h, Adult a las 24 h y Final a las 72 h.
 - Tabla fixture Child → Adult, en este orden: mistakes exactos 0, entrenamiento moderado y al menos 90 % de minutos con salud y felicidad buenas → `AdultSecret` o `AdultB` con un solo `nextBounded(2)`; entrenamiento frecuente → `AdultA`; felicidad buena al menos 60 % y como máximo 2 mistakes → `AdultB`; si nada coincide → `AdultC`.
-- Salud −1 por minuto solo con hambre 100, energía 0 o higiene 0. Felicidad −1 por minuto si, después del decay de ese minuto, alguna necesidad base está Urgent. Un punto en total, no uno por necesidad.
+- El piso de salud se mira antes del desgaste: hambre 100, energía 0 o higiene 0 restan 1 ese minuto. Fuera del piso, la salud sube 1 por minuto bajo 30 y 1 cada 5 minutos desde 30. El minuto en que un stat entra al piso no resta. Affection y stimulation no entran en esa cuenta. Train suma 2 al instante. Felicidad −1 por minuto si, después del decay de ese minuto, alguna necesidad base está Urgent. Un punto en total, no uno por necesidad.
 - Bandas del historial: un minuto cuenta como bueno desde 70 y como pobre por debajo de 40. Esos cortes no son `needLevel()`.
 
 ## Diferencias frente a los documentos de diseño
@@ -105,7 +105,7 @@ Se releyeron `references/neripal-research/crianzaNecesidadesEvoluciones.md` y `r
 
 | Diferencia | Clase |
 |---|---|
-| Umbrales, cadencias, deltas de acción, 15 minutos, 6/18 entrenamientos, 1 h/6 h/24 h/72 h | Valor provisional de balance |
+| Umbrales, cadencias, deltas de acción, 15 minutos, 6/18 entrenamientos, huevo al confirmar y 6 h/24 h/72 h | Valor provisional de balance |
 | Tabla AdultA/B/C/Secret y el fallback `AdultC` | Fixture temporal |
 | La ventana de mistake empieza solo en Urgent, no en Attention | Valor provisional de balance. El diseño no fijaba la regla exacta |
 | Stimulation dormida no se mueve. El diseño admite “muy poco o estable” | Valor provisional de balance |

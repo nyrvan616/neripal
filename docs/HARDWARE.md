@@ -41,7 +41,7 @@ reloj de pared, y guarda la partida en NVS (`NvsSaveStorage`, namespace `neripal
 claves `slot0` y `slot1`). Los botones representan siguiente, confirmar y volver.
 Ese loop incluye el menú de ocho acciones y la confirmación de `EvolutionNotice`.
 
-El rótulo del firmware es 0.6.1: `NERIPAL 0.6.1` en pantalla y `NeriPal 0.6.1` por serial.
+El rótulo del firmware es 0.6.2: `NERIPAL 0.6.2` en pantalla y `NeriPal 0.6.2` por serial.
 
 Tampoco están integrados CST816T, QMI8658, ADC de batería, audio o SD-MMC. La
 semilla RNG del firmware sigue siendo un placeholder del composition root.
@@ -50,8 +50,8 @@ semilla RNG del firmware sigue siendo un placeholder del composition root.
 
 1. Sostener el dominio de alimentación mediante GPIO2.
 2. Inicializar Serial y comprobar flash y PSRAM detectadas.
-3. SPI2 y ST7789 arrancan en 0.6.1; el primer frame se limpia antes del backlight.
-4. `IRenderer` dibuja `PetView`. El rótulo es `NERIPAL 0.6.1`.
+3. SPI2 y ST7789 arrancan en 0.6.2; el primer frame se limpia antes del backlight.
+4. `IRenderer` dibuja `PetView`. El rótulo es `NERIPAL 0.6.2`.
 5. Inicializar una única instancia de I2C en GPIO42/GPIO41.
 6. Integrar CST816T y normalizar coordenadas al espacio lógico 240x240.
 7. Agregar IMU, batería y audio mediante adaptadores separados.

@@ -41,6 +41,8 @@ public:
         int x = 0;
         int y = 0;
         int scale = 1;
+        int cellWidth = 0;
+        int cellHeight = 0;
         std::string text;
     };
 
@@ -51,8 +53,9 @@ public:
     void drawRect(int x, int y, int width, int height, Color) override {
         rectangles.push_back({x, y, width, height});
     }
-    void drawText(int x, int y, std::string_view text, Color, int scale) override {
-        texts.push_back(TextCommand{x, y, scale, std::string(text)});
+    void drawText(int x, int y, std::string_view text, Color, int scale, int cellWidth,
+                  int cellHeight) override {
+        texts.push_back(TextCommand{x, y, scale, cellWidth, cellHeight, std::string(text)});
     }
     void endFrame() override { endedFrame = true; }
 
@@ -75,9 +78,12 @@ int effectiveTextScale(int scale) {
 
 bool textCommandFits(const FakeRenderer::TextCommand& command, std::string& detail) {
     const int scale = effectiveTextScale(command.scale);
-    const int right = command.x + FakeRenderer::kTextCellWidth * scale *
-                      static_cast<int>(command.text.size());
-    const int bottom = command.y + FakeRenderer::kTextCellHeight * scale;
+    const int cellWidth = command.cellWidth > 0 ? command.cellWidth
+                                                 : FakeRenderer::kTextCellWidth * scale;
+    const int cellHeight = command.cellHeight > 0 ? command.cellHeight
+                                                   : FakeRenderer::kTextCellHeight * scale;
+    const int right = command.x + cellWidth * static_cast<int>(command.text.size());
+    const int bottom = command.y + cellHeight;
     if (command.x >= 0 && command.y >= 0 && right <= FakeRenderer::kLogicalWidth &&
         bottom <= FakeRenderer::kLogicalHeight) {
         return true;
@@ -215,11 +221,11 @@ bool menuSelectionEasesOutOver240ms() {
         highlightY = rect.y;
         ++highlights;
     }
-    // Tile 0 is (20, 76) and tile 1 is (72, 76). The 48x42 panel is drawn at
+    // Tile 0 is (18, 78) and tile 1 is (72, 78). The 48x42 panel is drawn at
     // origin - 2, and its full-width stroke sits 3 px lower. Linear t=0.5
-    // would place that stroke at x=44; the destination stroke is at x=70.
-    if (highlights != 1 || highlightY != 77) return false;
-    if (highlightX <= 44 || highlightX >= 70) return false;
+    // would place that stroke at x=43; the destination stroke is at x=70.
+    if (highlights != 1 || highlightY != 79) return false;
+    if (highlightX <= 43 || highlightX >= 70) return false;
 
     ui.update(neripal::ui::UiController::kMenuSelectionMillis - 1);
     if (!(ui.state().menuSelectionProgress < 1.0F)) return false;
@@ -943,7 +949,7 @@ bool renderTextsFit(neripal::ui::PetView& view, const PetState& pet,
 }
 
 bool textFitsViewport() {
-    FakeRenderer::TextCommand collapsed{230, 0, 0, "AB"};
+    FakeRenderer::TextCommand collapsed{230, 0, 0, 0, 0, "AB"};
     std::string collapsedDetail;
     if (textCommandFits(collapsed, collapsedDetail)) {
         std::cerr << "textFitsViewport scale<1 was not treated as 1\n";
@@ -1099,6 +1105,76 @@ bool textFitsViewport() {
     return true;
 }
 
+bool resetPromptStartsOnNoAndConfirmsOnce() {
+    PetState pet;
+    pet.stage = neripal::core::EvolutionStage::Baby;
+    pet.ageMillis = 60'000;
+    neripal::ui::UiController ui;
+    neripal::ui::PetView view;
+
+    ui.handleInput(InputAction::Confirm, pet);
+    ui.handleInput(InputAction::Confirm, pet);
+    ui.handleInput(InputAction::ResetPrompt, pet);
+    if (!ui.showingResetPrompt() || ui.state().resetPromptYes) return false;
+    if (ui.takeCareAction().has_value() || ui.takeResetConfirm()) return false;
+    if (ui.state().screen != neripal::ui::Screen::Home) return false;
+
+    FakeRenderer opened;
+    view.render(opened, pet, ui.state());
+    if (!hasText(opened, "REINICIAR?") || !hasText(opened, "NO") || !hasText(opened, "SI")) {
+        return false;
+    }
+    if (hasText(opened, "EVOLVED") || hasText(opened, "Menu")) return false;
+    if (footerPills(opened) != 3) return false;
+    if (textX(opened, "Next") <= textX(opened, "A")) return false;
+    if (!rectsInside(opened)) return false;
+    for (const auto& command : opened.texts) {
+        std::string detail;
+        if (!textCommandFits(command, detail)) return false;
+    }
+
+    ui.handleInput(InputAction::Confirm, pet);
+    if (ui.showingResetPrompt() || ui.takeResetConfirm()) return false;
+
+    ui.handleInput(InputAction::Confirm, pet);
+    if (ui.state().screen != neripal::ui::Screen::MainMenu) return false;
+    ui.handleInput(InputAction::ResetPrompt, pet);
+    if (!ui.showingResetPrompt() || ui.state().resetPromptYes) return false;
+    if (ui.state().screen != neripal::ui::Screen::MainMenu) return false;
+    ui.handleInput(InputAction::Next, pet);
+    if (!ui.state().resetPromptYes || ui.state().menuIndex != 0) return false;
+    ui.handleInput(InputAction::Next, pet);
+    if (ui.state().resetPromptYes) return false;
+    ui.handleInput(InputAction::Confirm, pet);
+    if (ui.showingResetPrompt() || ui.state().screen != neripal::ui::Screen::Home) return false;
+    if (ui.takeResetConfirm()) return false;
+    if (pet.stage != neripal::core::EvolutionStage::Baby || pet.ageMillis != 60'000) return false;
+
+    ui.handleInput(InputAction::ResetPrompt, pet);
+    ui.handleInput(InputAction::Next, pet);
+    ui.handleInput(InputAction::Confirm, pet);
+    if (ui.showingResetPrompt() || ui.state().screen != neripal::ui::Screen::Home) return false;
+    if (!ui.takeResetConfirm() || ui.takeResetConfirm()) return false;
+
+    ui.handleInput(InputAction::Confirm, pet);
+    ui.handleInput(InputAction::ResetPrompt, pet);
+    ui.handleInput(InputAction::Next, pet);
+    ui.handleInput(InputAction::Back, pet);
+    if (ui.showingResetPrompt() || ui.state().screen != neripal::ui::Screen::Home) return false;
+    if (ui.takeResetConfirm()) return false;
+
+    ui.presentEvolutionNotice(
+        {neripal::core::EvolutionStage::Egg, neripal::core::EvolutionStage::Baby,
+         neripal::core::FormId::Juvenile});
+    ui.handleInput(InputAction::ResetPrompt, pet);
+    FakeRenderer covered;
+    view.render(covered, pet, ui.state());
+    if (!hasText(covered, "REINICIAR?") || hasText(covered, "EVOLVED")) return false;
+    ui.handleInput(InputAction::Confirm, pet);
+    if (ui.takeResetConfirm() || ui.takeEvolutionConfirm()) return false;
+    return ui.showingEvolutionNotice() && rectsInside(covered);
+}
+
 bool rgb565Conversion() {
     using neripal::platform::toRgb565;
     const std::pair<Color, std::uint16_t> cases[] = {
@@ -1125,6 +1201,19 @@ bool rgb565Conversion() {
     if (toRgb565(0x00FF0000u) == toRgb565(0x000000FFu)) return false;
     if (toRgb565(0x0000FF00u) == 0x03E0u) return false;
     return true;
+}
+
+bool confirmOnEggRequestsHatchOnce() {
+    PetState egg;
+    neripal::ui::UiController ui;
+    ui.handleInput(InputAction::Next, egg);
+    if (ui.takeHatch()) return false;
+    ui.handleInput(InputAction::Back, egg);
+    if (ui.takeHatch() || ui.state().screen != neripal::ui::Screen::Home) return false;
+    ui.handleInput(InputAction::Confirm, egg);
+    if (ui.state().screen != neripal::ui::Screen::MainMenu) return false;
+    if (!ui.takeHatch()) return false;
+    return !ui.takeHatch();
 }
 }
 
@@ -1158,6 +1247,8 @@ int main() {
         {"attention and urgent share the need symbol", attentionAndUrgentShareTheNeedSymbol},
         {"each need uses its own signal", eachNeedUsesItsOwnSignal},
         {"evolution notice is shown then confirmed in order", evolutionNoticeIsShownThenConfirmedInOrder},
+        {"confirm on egg requests hatch once", confirmOnEggRequestsHatchOnce},
+        {"reset prompt starts on no and confirms once", resetPromptStartsOnNoAndConfirmsOnce},
         {"confirming notice does not change stage or form", confirmingNoticeDoesNotChangeStageOrForm},
         {"final uses the adult placeholder", finalUsesTheAdultPlaceholder},
         {"debug force evolution keeps stage and form coherent", debugForceEvolutionKeepsStageAndFormCoherent},

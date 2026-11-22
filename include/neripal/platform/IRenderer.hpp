@@ -14,6 +14,7 @@ public:
 
     // (x, y) is the top-left of the first cell. Each character advances
     // kTextCellWidth * scale. Line height is kTextCellHeight * scale.
+    // A positive cellWidth or cellHeight replaces that axis.
     static constexpr int kTextCellWidth = 6;
     static constexpr int kTextCellHeight = 8;
 
@@ -21,7 +22,8 @@ public:
     virtual void beginFrame(Color color) = 0;
     virtual void fillRect(int x, int y, int width, int height, Color color) = 0;
     virtual void drawRect(int x, int y, int width, int height, Color color) = 0;
-    virtual void drawText(int x, int y, std::string_view text, Color color, int scale = 1) = 0;
+    virtual void drawText(int x, int y, std::string_view text, Color color, int scale = 1,
+                          int cellWidth = 0, int cellHeight = 0) = 0;
     virtual void endFrame() = 0;
 };
 

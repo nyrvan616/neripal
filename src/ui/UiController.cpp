@@ -73,7 +73,52 @@ bool UiController::takeEvolutionConfirm() {
     return true;
 }
 
+void UiController::openResetPrompt() {
+    state_.resetPromptVisible = true;
+    state_.resetPromptYes = false;
+    pendingCareAction_.reset();
+    pendingResetConfirm_ = false;
+    pendingHatch_ = false;
+}
+
+void UiController::closeResetPrompt() {
+    state_.resetPromptVisible = false;
+    state_.resetPromptYes = false;
+    state_.screen = Screen::Home;
+}
+
+bool UiController::takeResetConfirm() {
+    if (!pendingResetConfirm_) return false;
+    pendingResetConfirm_ = false;
+    pendingEvolutionConfirm_ = false;
+    pendingHatch_ = false;
+    state_.evolutionNoticeVisible = false;
+    return true;
+}
+
+bool UiController::takeHatch() {
+    if (!pendingHatch_) return false;
+    pendingHatch_ = false;
+    return true;
+}
+
 void UiController::handleInput(platform::InputAction action, const core::PetState& petState) {
+    if (action == platform::InputAction::ResetPrompt) {
+        openResetPrompt();
+        return;
+    }
+    if (state_.resetPromptVisible) {
+        if (action == platform::InputAction::Next) {
+            state_.resetPromptYes = !state_.resetPromptYes;
+        } else if (action == platform::InputAction::Back ||
+                   (action == platform::InputAction::Confirm && !state_.resetPromptYes)) {
+            closeResetPrompt();
+        } else if (action == platform::InputAction::Confirm) {
+            pendingResetConfirm_ = true;
+            closeResetPrompt();
+        }
+        return;
+    }
     if (state_.evolutionNoticeVisible) {
         if (action == platform::InputAction::Confirm) {
             pendingEvolutionConfirm_ = true;
@@ -82,7 +127,12 @@ void UiController::handleInput(platform::InputAction action, const core::PetStat
     }
     switch (state_.screen) {
         case Screen::Home:
-            if (action == platform::InputAction::Confirm) openMenu();
+            if (action == platform::InputAction::Confirm) {
+                if (petState.stage == core::EvolutionStage::Egg) {
+                    pendingHatch_ = true;
+                }
+                openMenu();
+            }
             break;
         case Screen::MainMenu:
             if (action == platform::InputAction::Next) {

@@ -38,9 +38,11 @@ struct StatDelta {
 StatDelta careEffect(CareAction action) noexcept;
 
 // One simulated minute. Advances `phase` through kNeedsPhaseCycle.
-// Base-need decay, then happiness if any base need is Urgent, then health
-// at the existing physical floors. Happiness and health are not recomputed
-// from scratch.
+// The health floor is the stats from before this minute's decay. A floor
+// costs one health. Off the floor, health rises every minute below
+// kHealthRecoverUrgentBelow, and every kHealthRecoverInterval minutes above it.
+// Happiness still drops once if any base need is Urgent after the decay.
+// Happiness and health are not recomputed from scratch.
 void applyNeedsStep(PetState& state, std::uint8_t& phase) noexcept;
 
 }  // namespace neripal::core

@@ -1,7 +1,7 @@
 # WaveshareS3Platform
 
 Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54. El rótulo vigente es
-0.6.1; esta página describe solo la plataforma.
+0.6.2; esta página describe solo la plataforma.
 
 ## Implementado
 
@@ -9,7 +9,7 @@ Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54. El rótulo vigente es
 - GPIO2 como battery power-hold y GPIO46 como backlight activo alto.
 - Botones activos bajos en GPIO0, GPIO5 y GPIO4.
 - Mapeo provisional V-Pet: botón 1 siguiente, botón 2 confirmar y botón 3 volver.
-- Identificación de versión 0.6.1 por Serial (`NeriPal 0.6.1`); `PetView` muestra `NERIPAL 0.6.1`.
+- Identificación de versión 0.6.2 por Serial (`NeriPal 0.6.2`); `PetView` muestra `NERIPAL 0.6.2`.
 - Contratos `IInput` e `IRenderer` completos a nivel de compilación.
 - `XorShift32` inyectado en el composition root con un placeholder de seed
   (`kFirmwareRngSeedPlaceholder`). No es política de producto ni el valor `1`.
@@ -20,7 +20,7 @@ Estado de la HAL para Waveshare ESP32-S3-Touch-LCD-1.54. El rótulo vigente es
 
 ## Pantalla
 
-`beginFrame`, `fillRect`, `drawRect`, `drawText` y `endFrame` dibujan en el canvas y el rótulo de UI es 0.6.1.
+`beginFrame`, `fillRect`, `drawRect`, `drawText` y `endFrame` dibujan en el canvas y el rótulo de UI es 0.6.2.
 
 ## Pendiente de implementación física
 

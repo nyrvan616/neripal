@@ -24,7 +24,9 @@ enum class FormId : std::uint8_t {
 };
 
 namespace evolution {
-// Provisional 0.6 durations. Age opens the next stage; it does not choose a form.
+// Provisional durations from the moment Pet::hatch() sets age back to 0.
+// Age opens Baby, Child, Adult and Final. It does not open the egg or choose a form.
+// kEggHatchAgeMs is the former one-hour wait and is not a stage gate.
 inline constexpr std::uint64_t kEggHatchAgeMs = 60ULL * 60 * 1000;
 inline constexpr std::uint64_t kChildAgeMs = 6ULL * 60 * 60 * 1000;
 inline constexpr std::uint64_t kAdultAgeMs = 24ULL * 60 * 60 * 1000;

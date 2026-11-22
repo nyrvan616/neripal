@@ -39,7 +39,8 @@ public:
     void beginFrame(platform::Color color) override;
     void fillRect(int x, int y, int width, int height, platform::Color color) override;
     void drawRect(int x, int y, int width, int height, platform::Color color) override;
-    void drawText(int x, int y, std::string_view text, platform::Color color, int scale) override;
+    void drawText(int x, int y, std::string_view text, platform::Color color, int scale,
+                  int cellWidth, int cellHeight) override;
     void endFrame() override;
 
 #if NERIPAL_RENDER_DIAGNOSTICS
@@ -96,6 +97,9 @@ private:
 
     // GPIO0 Next, GPIO5 Confirm, GPIO4 Back. Order is the poll priority.
     DebouncedButton buttons_[3]{};
+    bool chordHeld_ = false;
+    bool chordFired_ = false;
+    std::uint32_t chordStartMs_ = 0;
 
 #if NERIPAL_RENDER_DIAGNOSTICS
     std::uint32_t lastFlushUs_ = 0;

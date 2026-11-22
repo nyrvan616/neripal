@@ -5,9 +5,15 @@ ESP32-S3-Touch-LCD-1.54. El proyecto comparte un Game Core C++17 entre el
 simulador y el firmware, con presentación 240x240, tiempo inyectable y tests
 deterministas.
 
-El rótulo vigente es 0.6.1: `include/neripal/Version.hpp` y
-`project(NeriPal VERSION 0.6.1)`. La pantalla muestra `NERIPAL 0.6.1` y el
-serial `NeriPal 0.6.1`. El cierre de juego sigue en la milestone 0.6.
+El rótulo vigente es 0.6.2: `include/neripal/Version.hpp` y
+`project(NeriPal VERSION 0.6.2)`. La pantalla muestra `NERIPAL 0.6.2` y el
+serial `NeriPal 0.6.2`. El cierre de juego sigue en la milestone 0.6.
+
+0.6.2, sobre 0.6.1: la salud se recupera fuera del piso (1 por minuto bajo 30
+y 1 cada 5 minutos desde 30; el piso se mira antes del desgaste). El huevo se
+abre al confirmar en Home y la edad vuelve a 0; el bebé dura 6 horas desde ahí.
+También entran el aviso de reinicio con los tres botones, el menú y las letras
+más grandes, y el muestreo de glifos para que no se vean cortados en la placa.
 
 NeriPal está preparado como un repositorio independiente. No necesita el
 directorio que lo contiene ni repositorios hermanos. En esta documentación,
@@ -26,7 +32,7 @@ directorio que lo contiene ni repositorios hermanos. En esta documentación,
 | HAL Waveshare | Base parcial | Reloj, power-hold, backlight, tres botones y NVS |
 | Display/touch/audio/IMU | Pendiente | `IRenderer` completo sigue vacío, `drawText` incluido |
 
-0.6.1 es el rótulo del simulador y del firmware. Está verificada en host, tests
+0.6.2 es el rótulo del simulador y del firmware. Está verificada en host, tests
 y build de firmware.
 
 El cierre de 0.6 está en [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md). Los de
@@ -37,7 +43,7 @@ El cierre de 0.6 está en [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md). Los 
 - `PetState`: cinco stats base, salud, felicidad, edad, sueño, etapa, forma y pose.
 - Acciones: feed, train, sleep, wake, clean, pet y play, con rechazos motivados.
 - Autonomía: Idle, Walk 1D, Nap, y reacciones Eat, Happy, Tired, Dirty, Annoyed.
-- Etapas Egg → Baby → Child → Adult → Final. La edad abre la etapa; el historial elige la forma fixture en Child → Adult.
+- Etapas Egg → Baby → Child → Adult → Final. Confirmar en Home abre el huevo, lo pasa a bebé y pone la edad en 0. La edad abre Baby, Child, Adult y Final. El historial elige la forma fixture en Child → Adult.
 - `EvolutionNotice` persistente. Confirmarlo no cambia etapa ni forma.
 - Save V2 en el simulador (`neripal-slot0.bin` / `neripal-slot1.bin`) y NVS en firmware. Lectura y migración de V1.
 - Tiempo apagado: necesidades y edad avanzan; los care mistakes no se generan offline.
@@ -154,7 +160,7 @@ simulator/debug/           herramientas exclusivas de desarrollo
 tests/unit/core/           tests de juego
 tests/unit/ui/             tests de presentación
 tests/unit/persist/        tests de save
-assets/placeholders/       reserva para arte original; 0.6.1 sigue en rectángulos
+assets/placeholders/       reserva para arte original; 0.6.2 sigue en rectángulos
 docs/                      arquitectura, desarrollo, hardware y cierres
 ```
 
@@ -164,7 +170,7 @@ docs/                      arquitectura, desarrollo, hardware y cierres
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): capas y dependencias.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md): compilación, ejecución, tests y debug.
 - [`docs/HARDWARE.md`](docs/HARDWARE.md): configuración, pinout y estado de la HAL.
-- [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md): cierre del ciclo evolutivo. El rótulo vigente es 0.6.1.
+- [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md): cierre del ciclo evolutivo. El rótulo vigente es 0.6.2.
 - [`docs/MILESTONE_0.4.md`](docs/MILESTONE_0.4.md) y [`docs/MILESTONE_0.3.md`](docs/MILESTONE_0.3.md): cierres históricos.
 - [`docs/STATUS_REPORT.md`](docs/STATUS_REPORT.md): diagnóstico histórico de la 0.1.
 - [`tests/README.md`](tests/README.md): alcance de pruebas.
@@ -173,5 +179,5 @@ docs/                      arquitectura, desarrollo, hardware y cierres
 ## Próximo trabajo
 
 El ciclo de 0.7 (enfermedad, envejecimiento, muerte y reglas definitivas) no está
-empezado. El rótulo vigente es 0.6.1. El detalle del cierre de juego está en
+empezado. El rótulo vigente es 0.6.2. El detalle del cierre de juego está en
 [`docs/MILESTONE_0.6.md`](docs/MILESTONE_0.6.md).

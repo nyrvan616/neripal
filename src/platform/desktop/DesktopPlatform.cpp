@@ -80,6 +80,26 @@ std::optional<int> DesktopPlatform::pollKey() {
 }
 
 std::optional<platform::InputAction> DesktopPlatform::pollAction() {
+    const bool allDown = (GetAsyncKeyState('Z') & 0x8000) != 0 &&
+                         (GetAsyncKeyState('X') & 0x8000) != 0 &&
+                         (GetAsyncKeyState('C') & 0x8000) != 0;
+    const auto nowMs = static_cast<std::uint32_t>(GetTickCount());
+    if (allDown) {
+        if (!chordHeld_) {
+            chordHeld_ = true;
+            chordFired_ = false;
+            chordStartMs_ = nowMs;
+        }
+        actions_.clear();
+        if (!chordFired_ && (nowMs - chordStartMs_) >= platform::kResetChordMs) {
+            chordFired_ = true;
+            return platform::InputAction::ResetPrompt;
+        }
+        return std::nullopt;
+    }
+    chordHeld_ = false;
+    chordFired_ = false;
+
     if (actions_.empty()) return std::nullopt;
     const auto action = actions_.front();
     actions_.pop_front();
@@ -104,8 +124,11 @@ void DesktopPlatform::drawRect(int x, int y, int width, int height, platform::Co
 }
 
 void DesktopPlatform::drawText(int x, int y, std::string_view text,
-                               platform::Color color, int scale) {
+                               platform::Color color, int scale, int cellWidth,
+                               int cellHeight) {
     DrawCommand command{CommandType::Text, x, y, 0, 0, std::max(1, scale), color, {}};
+    command.cellWidth = cellWidth;
+    command.cellHeight = cellHeight;
     command.text.assign(text.begin(), text.end());
     commands_.push_back(std::move(command));
 }
@@ -192,13 +215,31 @@ void DesktopPlatform::paint(HDC dc, const RECT& client) {
         const int x = originX + command.x * scale;
         const int y = originY + command.y * scale;
         if (command.type == CommandType::Text) {
-            const int fontHeight = 8 * scale * command.textScale;
-            HFONT font = CreateFontA(fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            const int textScale = std::max(1, command.textScale);
+            const int cellWidth = command.cellWidth > 0
+                                      ? command.cellWidth
+                                      : IRenderer::kTextCellWidth * textScale;
+            const int cellHeight = command.cellHeight > 0
+                                       ? command.cellHeight
+                                       : IRenderer::kTextCellHeight * textScale;
+            const int fontWidth = std::max(1, cellWidth * scale);
+            const int fontHeight = std::max(1, cellHeight * scale);
+            HFONT font = CreateFontA(fontHeight, fontWidth, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                 ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 NONANTIALIASED_QUALITY, FIXED_PITCH | FF_MODERN, "Terminal");
             HGDIOBJ previous = SelectObject(buffer, font);
             SetTextColor(buffer, toColorRef(command.color));
-            TextOutA(buffer, x, y, command.text.c_str(), static_cast<int>(command.text.size()));
+            int cursorX = x;
+            int cursorY = y;
+            for (const char character : command.text) {
+                if (character == '\n') {
+                    cursorX = x;
+                    cursorY += fontHeight;
+                    continue;
+                }
+                TextOutA(buffer, cursorX, cursorY, &character, 1);
+                cursorX += fontWidth;
+            }
             SelectObject(buffer, previous);
             DeleteObject(font);
             continue;

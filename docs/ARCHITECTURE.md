@@ -77,8 +77,7 @@ mistakes.
 
 ## Etapa, forma y reglas
 
-`EvolutionStage` y `FormId` son campos distintos. La edad, comparada con las
-compuertas de `evolution::`, decide si Core puede avanzar una etapa. `EvolutionRules`
+`EvolutionStage` y `FormId` son campos distintos. `Pet::hatch()` es la única entrada a Baby: abre el huevo y pone la edad en 0. Desde ahí, la edad comparada con las compuertas de `evolution::` abre Child, Adult y Final. `EvolutionRules`
 elige la forma solo cuando el cruce tiene varias salidas; en 0.6 ese cruce es
 Child → Adult. El resto de cruces asigna la forma coherente de esa etapa dentro
 de Core. La regla ganadora se resuelve una vez. Si tiene dos salidas, consume un
@@ -127,7 +126,8 @@ y no descarta tiempo.
 
 `Pet` recibe `IClock` e `IRandom` por constructor. `update()` y `applyOffline()`
 comparten `stepMinute`: el mismo minuto simulado aplica necesidades y, si la edad
-llega a la compuerta, una etapa. Las constantes están en `Balance.hpp`. Hygiene
+llega a la compuerta de Child, Adult o Final, una etapa. El huevo no avanza por
+esa compuerta. Las constantes están en `Balance.hpp`. Hygiene
 baja despierto y, más lento, también dormido. El reloj civil no entra al Core:
 `SaveSession` convierte el hueco de pared en dos deltas y llama a `applyOffline`.
 Offline no avanza la ventana de care mistakes. El detalle está en `MILESTONE_0.6.md`.

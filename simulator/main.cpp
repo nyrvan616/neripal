@@ -116,6 +116,9 @@ int main(int argc, char* argv[]) {
         while (const auto action = platform.pollAction()) {
             ui.handleInput(*action, pet.state());
         }
+        if (ui.takeHatch()) {
+            pet.hatch();
+        }
         if (ui.takeEvolutionConfirm()) {
             pet.confirmEvolutionNotice();
         }
@@ -129,6 +132,10 @@ int main(int argc, char* argv[]) {
             const auto result = pet.apply(*care);
             saves.noteCareResult(result);
             ui.beginCareFeedback(*care, result, clock.nowMillis());
+        }
+        if (ui.takeResetConfirm()) {
+            pet.reset();
+            saves.saveNow();
         }
         pet.update();
         ui.update(clock.nowMillis());
