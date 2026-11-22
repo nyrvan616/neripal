@@ -52,6 +52,9 @@ StatDelta careEffect(CareAction action) noexcept {
 }
 
 void applyNeedsStep(PetState& state, std::uint8_t& phase) noexcept {
+    const bool healthFloor = state.hunger == balance::kMaxStat ||
+                             state.energy == balance::kMinStat ||
+                             state.hygiene == balance::kMinStat;
     phase = static_cast<std::uint8_t>((phase + 1u) % balance::kNeedsPhaseCycle);
 
     state.hunger = clampStat(state.hunger + balance::kHungerPerStep);
@@ -80,9 +83,12 @@ void applyNeedsStep(PetState& state, std::uint8_t& phase) noexcept {
     if (urgent) {
         state.happiness = clampStat(state.happiness + balance::kHappinessUrgentPerStep);
     }
-    if (state.hunger == balance::kMaxStat || state.energy == balance::kMinStat ||
-        state.hygiene == balance::kMinStat) {
+    if (healthFloor) {
         state.health = clampStat(state.health + balance::kCriticalHealthPerStep);
+    } else if (state.health < balance::kHealthRecoverUrgentBelow) {
+        state.health = clampStat(state.health + balance::kHealthRecoverPerStep);
+    } else if (phase % static_cast<std::uint8_t>(balance::kHealthRecoverInterval) == 0) {
+        state.health = clampStat(state.health + balance::kHealthRecoverPerStep);
     }
 }
 

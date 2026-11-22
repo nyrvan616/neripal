@@ -164,15 +164,17 @@ bool evolutionUsesControlledAge() {
     pet.update();
     return pet.state().stage == neripal::core::EvolutionStage::Adult;
 }
-bool eggHatchesWithControlledAge() {
-    FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng); auto state = pet.state();
-    state.stage = neripal::core::EvolutionStage::Egg;
-    state.ageMillis = 0;
-    pet.restore(state);
-    if (pet.state().stage != neripal::core::EvolutionStage::Egg) return false;
-    clock.advance(neripal::core::evolution::kEggHatchAgeMs);
+bool eggDoesNotHatchByAge() {
+    namespace E = neripal::core::evolution;
+    FakeClock clock;
+    FakeRandom rng;
+    Pet pet(clock, rng);
+    const auto before = pet.state();
+    clock.advance(E::kEggHatchAgeMs);
     pet.update();
-    return pet.state().stage == neripal::core::EvolutionStage::Baby;
+    const auto after = pet.state();
+    return after.stage == neripal::core::EvolutionStage::Egg &&
+           after.ageMillis == E::kEggHatchAgeMs && sameCareStats(before, after);
 }
 bool cleanRaisesHygiene() {
     FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
@@ -253,16 +255,60 @@ bool lowHygieneLowersHappinessOnlyWhenUrgent() {
     return pet.state().hygiene == B::kLowNeedUrgent - 1 && pet.state().happiness == 49;
 }
 bool zeroHygieneLowersHealth() {
-    FakeClock clock; XorShift32 rng(1u); Pet pet = hatchedPet(clock, rng);
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
     auto state = pet.state();
     state.hunger = 10;
     state.energy = 80;
     state.hygiene = 1;
     state.health = 50;
     pet.restore(state);
-    clock.advance(neripal::core::balance::kNeedsStepMs);
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    if (pet.state().hygiene != 0 || pet.state().health != 50) return false;
+    clock.advance(B::kNeedsStepMs);
     pet.update();
     return pet.state().hygiene == 0 && pet.state().health == 49;
+}
+bool lowHealthRecoversEveryMinuteOffTheFloor() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
+    auto state = pet.state();
+    state.hunger = 10;
+    state.energy = 80;
+    state.hygiene = 80;
+    state.health = 20;
+    pet.restore(state);
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    if (pet.state().health != 21) return false;
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().health == 22;
+}
+bool healthRecoversOnTheFifthMinute() {
+    namespace B = neripal::core::balance;
+    FakeClock clock;
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
+    auto state = pet.state();
+    state.hunger = 10;
+    state.energy = 80;
+    state.hygiene = 80;
+    state.health = B::kHealthRecoverUrgentBelow;
+    pet.restore(state);
+    for (int minute = 1; minute < B::kHealthRecoverInterval; ++minute) {
+        clock.advance(B::kNeedsStepMs);
+        pet.update();
+        if (pet.state().health != B::kHealthRecoverUrgentBelow) return false;
+    }
+    clock.advance(B::kNeedsStepMs);
+    pet.update();
+    return pet.state().health == B::kHealthRecoverUrgentBelow + B::kHealthRecoverPerStep;
 }
 bool feedRejectedWhenAsleep() {
     FakeClock clock; FakeRandom rng; Pet pet = hatchedPet(clock, rng);
@@ -2123,33 +2169,38 @@ bool newGameStartsAsEgg() {
            pet.feed() == CareResult::RejectedEgg;
 }
 
-bool eggDoesNotChangeBeforeHatch() {
+bool eggDoesNotHatchWhenAgeIsAlreadyLate() {
     namespace E = neripal::core::evolution;
     FakeClock clock;
     FakeRandom rng;
     Pet pet(clock, rng);
     const auto before = pet.state();
-    clock.advance(E::kEggHatchAgeMs - 1);
+    clock.advance(E::kFinalAgeMs);
     pet.update();
     const auto after = pet.state();
     return after.stage == neripal::core::EvolutionStage::Egg &&
-           after.ageMillis == E::kEggHatchAgeMs - 1 && sameCareStats(before, after);
+           after.ageMillis == E::kFinalAgeMs && sameCareStats(before, after) &&
+           pet.pendingEvolutionNotices() == 0;
 }
 
-bool eggHatchesAtThreshold() {
-    namespace E = neripal::core::evolution;
+bool eggHatchesOnceOnRequest() {
     FakeClock clock;
     FakeRandom rng;
     Pet pet(clock, rng);
     const int hunger = pet.state().hunger;
-    clock.advance(E::kEggHatchAgeMs);
-    pet.update();
+    if (!pet.hatch()) return false;
     GameEvent event{};
     if (pet.state().stage != neripal::core::EvolutionStage::Baby) return false;
     if (pet.state().form != neripal::core::FormId::Juvenile) return false;
+    if (pet.state().ageMillis != 0) return false;
     if (pet.state().hunger != hunger) return false;
+    if (pet.pendingEvolutionNotices() != 1) return false;
     if (!pet.pollEvent(event) || event.kind != GameEventKind::Hatched) return false;
-    return !pet.pollEvent(event);
+    if (pet.pollEvent(event)) return false;
+    if (pet.hatch()) return false;
+    return pet.state().stage == neripal::core::EvolutionStage::Baby &&
+           pet.state().ageMillis == 0 && pet.pendingEvolutionNotices() == 1 &&
+           !pet.pollEvent(event);
 }
 
 bool babyBecomesChildAtAge() {
@@ -2194,9 +2245,11 @@ bool adultBecomesFinalAtAge() {
 
 bool longUpdateDoesNotSkipStages() {
     namespace E = neripal::core::evolution;
+    namespace B = neripal::core::balance;
     FakeClock clock;
-    FakeRandom rng;
+    XorShift32 rng(1u);
     Pet pet(clock, rng);
+    if (!pet.hatch()) return false;
     clock.advance(E::kAdultAgeMs);
     pet.update();
     const auto egg =
@@ -2208,23 +2261,28 @@ bool longUpdateDoesNotSkipStages() {
     const auto adult =
         neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Adult).steps;
     return pet.state().stage == neripal::core::EvolutionStage::Adult && egg == 0 &&
-           baby == 5u * 60u && child == 18u * 60u && adult == 0;
+           baby == static_cast<std::uint32_t>(E::kChildAgeMs / B::kNeedsStepMs) &&
+           child == static_cast<std::uint32_t>((E::kAdultAgeMs - E::kChildAgeMs) / B::kNeedsStepMs) &&
+           adult == 0;
 }
 
 bool overdueAgeAdvancesOnlyOneStage() {
     namespace E = neripal::core::evolution;
     FakeClock clock;
-    FakeRandom rng;
-    Pet pet(clock, rng);
+    XorShift32 rng(1u);
+    Pet pet = hatchedPet(clock, rng);
     auto snap = pet.capture();
-    snap.stage = neripal::core::EvolutionStage::Egg;
+    snap.stage = neripal::core::EvolutionStage::Baby;
+    snap.form = neripal::core::FormId::Juvenile;
     snap.ageMillis = E::kFinalAgeMs;
     pet.restoreSnapshot(snap);
-    if (pet.state().stage != neripal::core::EvolutionStage::Egg) return false;
+    if (pet.state().stage != neripal::core::EvolutionStage::Baby) return false;
     clock.advance(neripal::core::balance::kNeedsStepMs);
     pet.update();
-    return pet.state().stage == neripal::core::EvolutionStage::Baby &&
-           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Child)
+    return pet.state().stage == neripal::core::EvolutionStage::Child &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Adult)
+                   .steps == 0 &&
+           neripal::core::historyFor(pet.careRecord(), neripal::core::EvolutionStage::Final)
                    .steps == 0;
 }
 
@@ -2626,26 +2684,21 @@ bool offlineWithoutCrossingKeepsStage() {
            pet.state().ageMillis == 30 * B::kNeedsStepMs && pet.pendingEvolutionNotices() == 0;
 }
 
-bool offlineEggHatches() {
+bool offlineEggStaysEgg() {
     namespace E = neripal::core::evolution;
     FakeClock clock;
     FakeRandom rng;
     Pet pet(clock, rng);
     const int hunger = pet.state().hunger;
     pet.applyOffline(E::kEggHatchAgeMs, E::kEggHatchAgeMs);
-    neripal::core::EvolutionNotice notice{};
     GameEvent event{};
     while (pet.pollEvent(event)) {
         if (event.kind == GameEventKind::Hatched) return false;
     }
-    return pet.state().stage == neripal::core::EvolutionStage::Baby &&
-           pet.state().form == neripal::core::FormId::Juvenile && pet.state().hunger == hunger &&
-           pet.pendingEvolutionNotices() == 1 && pet.peekEvolutionNotice(notice) &&
-           notice.from == neripal::core::EvolutionStage::Egg &&
-           notice.to == neripal::core::EvolutionStage::Baby &&
-           notice.form == neripal::core::FormId::Juvenile &&
-           stageStepCount(pet, neripal::core::EvolutionStage::Egg) == 0 &&
-           stageStepCount(pet, neripal::core::EvolutionStage::Baby) == 0;
+    return pet.state().stage == neripal::core::EvolutionStage::Egg &&
+           pet.state().form == neripal::core::FormId::None && pet.state().hunger == hunger &&
+           pet.state().ageMillis == E::kEggHatchAgeMs && pet.pendingEvolutionNotices() == 0 &&
+           stageStepCount(pet, neripal::core::EvolutionStage::Egg) == 0;
 }
 
 bool offlineBabyBecomesChild() {
@@ -2716,12 +2769,13 @@ bool offlineLongJumpCrossesInOrder() {
     FakeClock clock;
     FakeRandom rng;
     Pet pet(clock, rng);
+    if (!pet.hatch()) return false;
     pet.applyOffline(E::kFinalAgeMs, E::kFinalAgeMs);
     if (pet.state().stage != neripal::core::EvolutionStage::Final) return false;
     if (rng.remaining() != 0) return false;
     if (stageStepCount(pet, neripal::core::EvolutionStage::Egg) != 0) return false;
     if (stageStepCount(pet, neripal::core::EvolutionStage::Baby) !=
-        static_cast<std::uint32_t>((E::kChildAgeMs - E::kEggHatchAgeMs) / B::kNeedsStepMs)) {
+        static_cast<std::uint32_t>(E::kChildAgeMs / B::kNeedsStepMs)) {
         return false;
     }
     if (stageStepCount(pet, neripal::core::EvolutionStage::Child) !=
@@ -2911,14 +2965,16 @@ int main() {
         {"restored state is normalized", restoreNormalizesEveryStat},
         {"hygiene restore clamps low", hygieneRestoreClampsLow},
         {"evolution uses controlled age", evolutionUsesControlledAge},
-        {"egg hatches with controlled age", eggHatchesWithControlledAge},
+        {"egg does not hatch by age", eggDoesNotHatchByAge},
         {"clean raises hygiene", cleanRaisesHygiene},
         {"clean does not exceed max", cleanDoesNotExceedMax},
         {"awake time lowers hygiene", awakeTimeLowersHygiene},
         {"sleep does not lower hygiene", sleepDoesNotLowerHygiene},
         {"high hunger lowers happiness only when urgent", highHungerLowersHappinessOnlyWhenUrgent},
         {"low hygiene lowers happiness only when urgent", lowHygieneLowersHappinessOnlyWhenUrgent},
-        {"zero hygiene lowers health", zeroHygieneLowersHealth},
+        {"zero hygiene lowers health on the next minute", zeroHygieneLowersHealth},
+        {"low health recovers every minute off the floor", lowHealthRecoversEveryMinuteOffTheFloor},
+        {"health recovers on the fifth minute", healthRecoversOnTheFifthMinute},
         {"feed rejected when asleep", feedRejectedWhenAsleep},
         {"train rejected when asleep", trainRejectedWhenAsleep},
         {"clean rejected when asleep", cleanRejectedWhenAsleep},
@@ -3023,8 +3079,8 @@ int main() {
         {"train increments training count and play does not", trainIncrementsTrainingCountAndPlayDoesNot},
         {"stage history is kept when age moves stage", stageHistoryIsKeptWhenAgeMovesStage},
         {"new game starts as egg", newGameStartsAsEgg},
-        {"egg does not change before hatch", eggDoesNotChangeBeforeHatch},
-        {"egg hatches at threshold", eggHatchesAtThreshold},
+        {"egg does not hatch when age is already late", eggDoesNotHatchWhenAgeIsAlreadyLate},
+        {"hatch opens the egg once at age zero", eggHatchesOnceOnRequest},
         {"baby becomes child at age", babyBecomesChildAtAge},
         {"child becomes adult at age", childBecomesAdultAtAge},
         {"adult becomes final at age", adultBecomesFinalAtAge},
@@ -3047,7 +3103,7 @@ int main() {
         {"adult to final keeps form", adultToFinalKeepsForm},
         {"evolution context reads other stage and lifetime", evolutionContextReadsOtherStageAndLifetime},
         {"offline without crossing keeps stage", offlineWithoutCrossingKeepsStage},
-        {"offline egg hatches", offlineEggHatches},
+        {"offline egg stays egg", offlineEggStaysEgg},
         {"offline baby becomes child", offlineBabyBecomesChild},
         {"offline child becomes adult once", offlineChildBecomesAdultOnce},
         {"offline adult becomes final and keeps form", offlineAdultBecomesFinalKeepsForm},

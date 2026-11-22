@@ -6,6 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include <cstdint>
 #include <deque>
 #include <optional>
 #include <string>
@@ -29,7 +30,8 @@ public:
     void beginFrame(platform::Color color) override;
     void fillRect(int x, int y, int width, int height, platform::Color color) override;
     void drawRect(int x, int y, int width, int height, platform::Color color) override;
-    void drawText(int x, int y, std::string_view text, platform::Color color, int scale) override;
+    void drawText(int x, int y, std::string_view text, platform::Color color, int scale,
+                  int cellWidth, int cellHeight) override;
     void endFrame() override;
 
 private:
@@ -43,6 +45,8 @@ private:
         int textScale = 1;
         platform::Color color = 0;
         std::string text;
+        int cellWidth = 0;
+        int cellHeight = 0;
     };
 
     static LRESULT CALLBACK windowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -58,6 +62,9 @@ private:
     std::deque<int> keys_;
     std::deque<platform::InputAction> actions_;
     std::vector<std::string> debugLines_;
+    bool chordHeld_ = false;
+    bool chordFired_ = false;
+    std::uint32_t chordStartMs_ = 0;
 };
 
 }  // namespace neripal::desktop

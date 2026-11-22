@@ -1,7 +1,7 @@
 # Documentación de NeriPal
 
 Este directorio reúne las decisiones técnicas y el estado verificable del
-proyecto. El rótulo vigente es 0.6.1. El cierre del ciclo evolutivo sigue en
+proyecto. El rótulo vigente es 0.6.2. El cierre del ciclo evolutivo sigue en
 la milestone 0.6. `STATUS_REPORT.md`
 conserva el diagnóstico histórico de la 0.1.
 

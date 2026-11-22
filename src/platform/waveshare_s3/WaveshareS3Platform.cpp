@@ -3,6 +3,8 @@
 #include "neripal/Version.hpp"
 #include "neripal/platform/Rgb565.hpp"
 
+#include <algorithm>
+
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include <driver/gpio.h>
@@ -134,13 +136,56 @@ bool WaveshareS3Platform::begin() {
 
 std::optional<platform::InputAction> WaveshareS3Platform::pollAction() {
     const std::uint32_t nowMs = millis();
-    std::optional<platform::InputAction> emitted;
-    for (DebouncedButton& button : buttons_) {
+    bool settledLevel[3]{};
+    for (std::size_t i = 0; i < 3; ++i) {
+        DebouncedButton& button = buttons_[i];
         const bool pressed = digitalRead(button.pin) == LOW;
         if (pressed != button.raw) {
             button.raw = pressed;
             button.lastChangeMs = nowMs;
         }
+        const bool settled = (nowMs - button.lastChangeMs) >= kButtonDebounceMs;
+        settledLevel[i] = settled ? pressed : button.stable;
+    }
+
+    const bool allDown = settledLevel[0] && settledLevel[1] && settledLevel[2];
+    if (allDown || chordHeld_) {
+        for (DebouncedButton& button : buttons_) {
+            if ((nowMs - button.lastChangeMs) < kButtonDebounceMs) continue;
+            if (button.raw == button.stable) continue;
+            button.stable = button.raw;
+            if (button.action == platform::InputAction::Confirm && button.raw) {
+                button.pressedAtMs = nowMs;
+                button.longPressConsumed = false;
+                button.suppressRelease = false;
+            }
+        }
+        // The hold is the chord, not a Confirm press and not a screen lock.
+        for (DebouncedButton& button : buttons_) {
+            if (button.action != platform::InputAction::Confirm) continue;
+            button.longPressConsumed = true;
+            button.suppressRelease = true;
+        }
+        if (allDown) {
+            if (!chordHeld_) {
+                chordHeld_ = true;
+                chordFired_ = false;
+                chordStartMs_ = nowMs;
+            }
+            if (!chordFired_ && (nowMs - chordStartMs_) >= platform::kResetChordMs) {
+                chordFired_ = true;
+                return platform::InputAction::ResetPrompt;
+            }
+            return std::nullopt;
+        }
+        chordHeld_ = false;
+        chordFired_ = false;
+        return std::nullopt;
+    }
+
+    std::optional<platform::InputAction> emitted;
+    for (DebouncedButton& button : buttons_) {
+        const bool pressed = button.raw;
         if ((nowMs - button.lastChangeMs) < kButtonDebounceMs) {
             continue;
         }
@@ -315,15 +360,95 @@ void WaveshareS3Platform::drawRect(int x, int y, int width, int height, platform
                       platform::toRgb565(color));
 }
 
+namespace {
+constexpr int kGlyphWidth = platform::IRenderer::kTextCellWidth;
+constexpr int kGlyphHeight = platform::IRenderer::kTextCellHeight;
+// glcdfont draws 5 ink columns and 7 ink rows. The 6th column and 8th row are the gap.
+constexpr int kInkColumns = 5;
+constexpr int kInkRows = 7;
+
+int sampleSource(int dest, int destCount, int srcCount) {
+    if (destCount <= 1 || srcCount <= 1) return 0;
+    return dest * (srcCount - 1) / (destCount - 1);
+}
+
+// The built-in glcdfont only scales by whole multiples of its 6x8 cell.
+// Other sizes are sampled from one 6x8 draw at the origin, then the origin is restored.
+// Ink is scaled across the cell; the font gap stays a margin so the last stroke is not
+// squeezed into a single pixel.
+void paintSampledGlyph(Arduino_Canvas& canvas, int destX, int destY, int cellWidth,
+                       int cellHeight, unsigned char character, std::uint16_t ink) {
+    std::uint16_t* framebuffer = canvas.getFramebuffer();
+    if (framebuffer == nullptr || cellWidth <= 0 || cellHeight <= 0) return;
+    const int frameWidth = canvas.width();
+    const int frameHeight = canvas.height();
+    std::uint16_t saved[kGlyphWidth * kGlyphHeight];
+    for (int row = 0; row < kGlyphHeight; ++row) {
+        for (int column = 0; column < kGlyphWidth; ++column) {
+            saved[row * kGlyphWidth + column] = framebuffer[row * frameWidth + column];
+        }
+    }
+    canvas.setTextSize(1);
+    canvas.drawChar(0, 0, character, ink, ink);
+    bool inkOn[kGlyphWidth * kGlyphHeight]{};
+    for (int row = 0; row < kGlyphHeight; ++row) {
+        for (int column = 0; column < kGlyphWidth; ++column) {
+            const int index = row * kGlyphWidth + column;
+            inkOn[index] = framebuffer[row * frameWidth + column] != saved[index];
+            framebuffer[row * frameWidth + column] = saved[index];
+        }
+    }
+    const int gapX = std::max(1, cellWidth / kGlyphWidth);
+    const int gapY = std::max(1, cellHeight / kGlyphHeight);
+    const int drawWidth = std::max(1, cellWidth - gapX);
+    const int drawHeight = std::max(1, cellHeight - gapY);
+    for (int oy = 0; oy < drawHeight; ++oy) {
+        const int sampleY = sampleSource(oy, drawHeight, kInkRows);
+        const int pixelY = destY + oy;
+        if (pixelY < 0 || pixelY >= frameHeight) continue;
+        for (int ox = 0; ox < drawWidth; ++ox) {
+            const int sampleX = sampleSource(ox, drawWidth, kInkColumns);
+            if (!inkOn[sampleY * kGlyphWidth + sampleX]) continue;
+            const int pixelX = destX + ox;
+            if (pixelX < 0 || pixelX >= frameWidth) continue;
+            framebuffer[pixelY * frameWidth + pixelX] = ink;
+        }
+    }
+}
+}
+
 void WaveshareS3Platform::drawText(int x, int y, std::string_view text,
-                                   platform::Color color, int scale) {
-    if (!displayReady_) return;
+                                   platform::Color color, int scale, int cellWidth,
+                                   int cellHeight) {
+    if (!displayReady_ || canvas_ == nullptr) return;
     const int textScale = scale < 1 ? 1 : scale;
-    canvas_->setTextSize(static_cast<std::uint8_t>(textScale));
-    canvas_->setTextColor(platform::toRgb565(color));
-    canvas_->setCursor(static_cast<std::int16_t>(x), static_cast<std::int16_t>(y));
+    const int resolvedWidth = cellWidth > 0 ? cellWidth : kGlyphWidth * textScale;
+    const int resolvedHeight = cellHeight > 0 ? cellHeight : kGlyphHeight * textScale;
+    const bool wholeGlyph =
+        resolvedWidth % kGlyphWidth == 0 && resolvedHeight % kGlyphHeight == 0 &&
+        (resolvedWidth / kGlyphWidth) == (resolvedHeight / kGlyphHeight);
+    const std::uint16_t ink = platform::toRgb565(color);
+    if (wholeGlyph) {
+        canvas_->setTextSize(static_cast<std::uint8_t>(resolvedWidth / kGlyphWidth));
+        canvas_->setTextColor(ink);
+        canvas_->setCursor(static_cast<std::int16_t>(x), static_cast<std::int16_t>(y));
+        for (const unsigned char character : text) {
+            canvas_->write(character);
+        }
+        return;
+    }
+
+    int cursorX = x;
+    int cursorY = y;
     for (const unsigned char character : text) {
-        canvas_->write(character);
+        if (character == '\n') {
+            cursorX = x;
+            cursorY += resolvedHeight;
+            continue;
+        }
+        paintSampledGlyph(*canvas_, cursorX, cursorY, resolvedWidth, resolvedHeight, character,
+                          ink);
+        cursorX += resolvedWidth;
     }
 }
 

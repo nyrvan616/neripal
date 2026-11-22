@@ -32,6 +32,10 @@ struct UiState {
     core::EvolutionStage evolutionFrom = core::EvolutionStage::Egg;
     core::EvolutionStage evolutionTo = core::EvolutionStage::Egg;
     core::FormId evolutionForm = core::FormId::None;
+    // Reset question. The controller never calls Pet::reset(); the composition
+    // root does that after takeResetConfirm(). resetPromptYes false means NO.
+    bool resetPromptVisible = false;
+    bool resetPromptYes = false;
 };
 
 // Owns transient presentation state only. It never mutates the game Core.
@@ -63,15 +67,25 @@ public:
     bool showingEvolutionNotice() const noexcept { return state_.evolutionNoticeVisible; }
     // True only after the user confirms the notice that is already on screen.
     bool takeEvolutionConfirm();
+    bool showingResetPrompt() const noexcept { return state_.resetPromptVisible; }
+    // True once, after Confirm on SI. The prompt is already closed.
+    bool takeResetConfirm();
+    // True once, after Confirm on Home while the pet is still an egg.
+    // The controller never calls Pet::hatch().
+    bool takeHatch();
 
 private:
     void openMenu();
     void selectNext();
     void confirmMenuSelection(const core::PetState& petState);
+    void openResetPrompt();
+    void closeResetPrompt();
 
     UiState state_{};
     std::optional<core::CareAction> pendingCareAction_;
     bool pendingEvolutionConfirm_ = false;
+    bool pendingResetConfirm_ = false;
+    bool pendingHatch_ = false;
     std::uint64_t lastNowMillis_ = 0;
     std::uint64_t selectionStartedMillis_ = 0;
     std::uint64_t careFeedbackStartedMillis_ = 0;

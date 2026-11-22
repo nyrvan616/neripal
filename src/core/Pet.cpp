@@ -89,6 +89,14 @@ CareResult Pet::apply(CareAction action) {
     return CareResult::RejectedAlreadyAwake;
 }
 
+bool Pet::hatch() {
+    if (state_.stage != EvolutionStage::Egg) return false;
+    state_.ageMillis = 0;
+    advanceOneStage();
+    pushHatched();
+    return true;
+}
+
 void Pet::applyNeedsStep() {
     if (state_.stage == EvolutionStage::Egg) return;
     neripal::core::applyNeedsStep(state_, needsStepPhase_);
@@ -98,7 +106,8 @@ void Pet::applyNeedsStep() {
 std::uint64_t Pet::millisUntilNextStage() const noexcept {
     std::uint64_t gate = 0;
     switch (state_.stage) {
-        case EvolutionStage::Egg: gate = evolution::kEggHatchAgeMs; break;
+        case EvolutionStage::Egg:
+            return std::numeric_limits<std::uint64_t>::max();
         case EvolutionStage::Baby: gate = evolution::kChildAgeMs; break;
         case EvolutionStage::Child: gate = evolution::kAdultAgeMs; break;
         case EvolutionStage::Adult: gate = evolution::kFinalAgeMs; break;

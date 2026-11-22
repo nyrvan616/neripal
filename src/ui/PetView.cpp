@@ -165,20 +165,25 @@ void drawScene(platform::IRenderer& r) {
     r.fillRect(109, 174, 5, 3, kPanelLight);
 }
 
+constexpr int kHeaderCellWidth = 8;
+constexpr int kHeaderCellHeight = 10;
+constexpr int kFooterCellWidth = 11;
+constexpr int kFooterCellHeight = 14;
+
 void drawHud(platform::IRenderer& r, const char* label) {
     r.fillRect(0, 0, 240, 25, kOutline);
     r.fillRect(4, 4, 26, 17, kPurple);
     r.drawRect(4, 4, 26, 17, kPanelLight);
-    r.drawText(11, 8, "N", kPanelLight);
-    r.drawText(39, 8, version::kScreenLabel, kPanelLight);
-    r.fillRect(187, 4, 49, 17, kPurple);
-    r.drawRect(187, 4, 49, 17, kPanelLight);
-    r.drawText(194, 8, label, kPanelLight);
+    r.drawText(11, 8, "N", kPanelLight, 1, kHeaderCellWidth, kHeaderCellHeight);
+    r.drawText(39, 8, version::kScreenLabel, kPanelLight, 1, kHeaderCellWidth, kHeaderCellHeight);
+    r.fillRect(180, 4, 56, 17, kPurple);
+    r.drawRect(180, 4, 56, 17, kPanelLight);
+    r.drawText(184, 8, label, kPanelLight, 1, kHeaderCellWidth, kHeaderCellHeight);
 }
 
 void drawDockIcon(platform::IRenderer& r, int x, bool selected, const char* glyph) {
     drawPanel(r, x, 211, 28, 22, selected ? kGold : kPanel, selected ? kGold : kOutline);
-    r.drawText(x + 9, 218, glyph, kInk, 1);
+    r.drawText(x + 9, 218, glyph, kInk, 1, kFooterCellWidth, kFooterCellHeight);
 }
 
 struct FooterItem {
@@ -187,7 +192,7 @@ struct FooterItem {
 };
 
 int footerLabelWidth(const char* label) {
-    return static_cast<int>(std::strlen(label)) * platform::IRenderer::kTextCellWidth;
+    return static_cast<int>(std::strlen(label)) * kFooterCellWidth;
 }
 
 int footerRowWidth(const FooterItem* items, int count) {
@@ -229,7 +234,11 @@ void addFooterItem(FooterItem* items, int& count, const char* key, const char* l
 void drawFooter(platform::IRenderer& r, const UiState& uiState) {
     FooterItem items[3]{};
     int count = 0;
-    if (uiState.evolutionNoticeVisible) {
+    if (uiState.resetPromptVisible) {
+        addFooterItem(items, count, "A", "Next");
+        addFooterItem(items, count, "B", "OK");
+        addFooterItem(items, count, "C", "Back");
+    } else if (uiState.evolutionNoticeVisible) {
         addFooterItem(items, count, "B", "OK");
     } else if (uiState.screen == Screen::Home) {
         addFooterItem(items, count, "B", "Menu");
@@ -251,7 +260,8 @@ void drawFooter(platform::IRenderer& r, const UiState& uiState) {
     if (x < 0) x = 0;
     for (int i = 0; i < count; ++i) {
         drawDockIcon(r, x, false, items[i].key);
-        r.drawText(x + kPillWidth + kWordGap, 218, items[i].label, kPanelLight);
+        r.drawText(x + kPillWidth + kWordGap, 218, items[i].label, kPanelLight, 1,
+                   kFooterCellWidth, kFooterCellHeight);
         x += kPillWidth + kWordGap + footerLabelWidth(items[i].label) + kGroupGap;
     }
 }
@@ -314,10 +324,10 @@ float menuSelectionEase(float t) {
 
 std::pair<int, int> menuTileOrigin(int menuIndex) {
     constexpr int kColumns = 4;
-    constexpr int kOriginX = 20;
-    constexpr int kOriginY = 76;
-    constexpr int kColSpacing = 52;
-    constexpr int kRowSpacing = 48;
+    constexpr int kOriginX = 18;
+    constexpr int kOriginY = 78;
+    constexpr int kColSpacing = 54;
+    constexpr int kRowSpacing = 50;
     return {kOriginX + (menuIndex % kColumns) * kColSpacing,
             kOriginY + (menuIndex / kColumns) * kRowSpacing};
 }
@@ -504,6 +514,19 @@ void drawNeedSignals(platform::IRenderer& r, const core::PetState& state) {
     }
 }
 
+void drawResetPrompt(platform::IRenderer& r, const UiState& uiState) {
+    if (!uiState.resetPromptVisible) return;
+    drawPanel(r, 24, 64, 192, 112, kPanel);
+    r.drawText(60, 80, "REINICIAR?", kInk, 2);
+    constexpr int kChoiceY = 124;
+    constexpr int kNoX = 58;
+    constexpr int kYesX = 146;
+    const int markedX = uiState.resetPromptYes ? kYesX : kNoX;
+    drawPanel(r, markedX - 10, kChoiceY - 6, 44, 28, kGold, kGold);
+    r.drawText(kNoX, kChoiceY, "NO", kInk, 2);
+    r.drawText(kYesX, kChoiceY, "SI", kInk, 2);
+}
+
 void drawEvolutionNotice(platform::IRenderer& r, const UiState& uiState) {
     if (!uiState.evolutionNoticeVisible) return;
     drawPanel(r, 24, 64, 192, 112, kPanel);
@@ -639,8 +662,8 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
         r.drawText(73, 153, banner, kInk, 2);
     } else if (uiState.screen == Screen::MainMenu) {
         drawHud(r, "MENU");
-        drawPanel(r, 16, 48, 208, 132, kPanel);
-        r.drawText(95, 58, "CARE", kInk, 2);
+        drawPanel(r, 8, 40, 224, 148, kPanel);
+        r.drawText(90, 48, "CARE", kInk, 1, 15, 20);
 
         const auto [fromX, fromY] = menuTileOrigin(uiState.previousMenuIndex);
         const auto [toX, toY] = menuTileOrigin(uiState.menuIndex);
@@ -651,7 +674,7 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
         for (int menuIndex = 0; menuIndex < UiController::kMenuItemCount; ++menuIndex) {
             drawMenuIcon(r, menuIndex, state.sleeping);
             const auto [labelX, labelY] = menuTileOrigin(menuIndex);
-            r.drawText(labelX, labelY + 26, menuLabel(menuIndex, state.sleeping), kInk);
+            r.drawText(labelX, labelY + 26, menuLabel(menuIndex, state.sleeping), kInk, 1, 8, 10);
         }
     } else {
         drawHud(r, "STATUS");
@@ -680,7 +703,11 @@ void PetView::render(platform::IRenderer& r, const core::PetState& state,
         r.drawText(148, 172, age, kInk);
     }
     drawFooter(r, uiState);
-    drawEvolutionNotice(r, uiState);
+    if (uiState.resetPromptVisible) {
+        drawResetPrompt(r, uiState);
+    } else {
+        drawEvolutionNotice(r, uiState);
+    }
     r.endFrame();
 }
 

@@ -28,6 +28,9 @@ public:
     CareResult pet();
     CareResult play();
     CareResult apply(CareAction action);
+    // Opens an egg into a baby and sets age to 0. Does nothing if the stage is
+    // not Egg. Pushes the evolution notice and the Hatched event.
+    bool hatch();
     void update();
     void reset();
 

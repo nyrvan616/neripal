@@ -36,8 +36,9 @@ inline constexpr int kAffectionAwakeInterval = 3;
 inline constexpr int kAffectionSleepInterval = 6;
 inline constexpr int kAffectionPerHit = -1;
 inline constexpr int kStimulationAwakePerStep = -1;
-// Least common multiple of the intervals above. needsStepPhase cycles through it.
-inline constexpr std::uint8_t kNeedsPhaseCycle = 12;
+// Least common multiple of the care intervals and the slow health recovery.
+// needsStepPhase cycles through it. A saved phase of 0..11 stays valid.
+inline constexpr std::uint8_t kNeedsPhaseCycle = 60;
 
 // Provisional need levels. Hunger rises toward Urgent; the other base needs fall.
 inline constexpr int kHungerAttention = 60;
@@ -64,6 +65,10 @@ inline constexpr int kHygienePerAwakeStep = -1;
 inline constexpr int kHygieneNeglectThreshold = 30;
 inline constexpr int kHappinessUrgentPerStep = -1;
 inline constexpr int kCriticalHealthPerStep = -1;
+inline constexpr int kHealthRecoverPerStep = 1;
+// Same line as annoyed-by-health. Below it, recovery is every minute.
+inline constexpr int kHealthRecoverUrgentBelow = 30;
+inline constexpr int kHealthRecoverInterval = 5;
 
 inline constexpr int kTiredMoodEnergy = 20;
 inline constexpr int kAnnoyedMoodHappiness = 35;
